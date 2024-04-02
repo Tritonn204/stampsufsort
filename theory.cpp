@@ -754,7 +754,10 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // Afterward, perform traditional SAIS hoping to reduce required recursion.
   // SAIS with low recursion depth is stupid fast.
 
-  // for(int d = 0; d < chunkSize*2; d++) {
+  // TODO (Alternate) weave my form of distinguished suffixes into divsufsort's system
+  // to enhance its induced copying using the inferred repetition of the input Dero template (optimal solution)
+
+  // for(int d = 0; d < modSize/4; d++) {
   //   bool found = false;
   //   for (int i = 0; i < dataSize; i++) {
   //     if (SA[i] <= 0) continue;
