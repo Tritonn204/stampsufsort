@@ -592,16 +592,16 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       std::cout << "[" << range.first << ", " << range.second << "]" << std::endl;
   }
 
-  for (int i = 0; i < dataSize; i++) {
-    buckets[data[i]]++;
-    if (i < dataSize-1) {
-      buckets_d[data[i]][data[i+1]]++;
-    } else {
-      buckets_d[data[i]][0]++;
-    }
-  }
+  // for (int i = 0; i < dataSize; i++) {
+  //   buckets[data[i]]++;
+  //   if (i < dataSize-1) {
+  //     buckets_d[data[i]][data[i+1]]++;
+  //   } else {
+  //     buckets_d[data[i]][0]++;
+  //   }
+  // }
 
-    for (int i = 0; i < dataSize; i++) {
+  for (int i = 0; i < dataSize; i++) {
     buckets[data[i]]++;
     if (i < dataSize-1) {
       buckets_d[data[i]][data[i+1]]++;
@@ -617,64 +617,22 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
     }
   }
 
-  // auto start = std::chrono::steady_clock::now();
-
+  auto start = std::chrono::steady_clock::now();
 
   int s = 1; // Leave room for terminator at start
   int s2 = 0; // Leave room for terminator at start
-
-  // Unroll the outer loop by a factor of 4
-  for (int i = 0; i < 256; i += 4) {
+  for (int i = 0; i < 256; i++) {
     heads[i] = s;
     headsIdx[i] = s;
     tails[i] = s + buckets[i]-1;
     tailsIdx[i] = s + buckets[i]-1;
     s += buckets[i];
-
-    heads[i+1] = s;
-    headsIdx[i+1] = s;
-    tails[i+1] = s + buckets[i+1]-1;
-    tailsIdx[i+1] = s + buckets[i+1]-1;
-    s += buckets[i+1];
-
-    heads[i+2] = s;
-    headsIdx[i+2] = s;
-    tails[i+2] = s + buckets[i+2]-1;
-    tailsIdx[i+2] = s + buckets[i+2]-1;
-    s += buckets[i+2];
-
-    heads[i+3] = s;
-    headsIdx[i+3] = s;
-    tails[i+3] = s + buckets[i+3]-1;
-    tailsIdx[i+3] = s + buckets[i+3]-1;
-    s += buckets[i+3];
-
-    // Unroll the inner loop by a factor of 4
-    for (int j = 0; j < 256; j += 4) {
+    for (int j = 0; j < 256; j++) {
       heads_d[i][j] = s2;
       headsIdx_d[i][j] = s2;
       tails_d[i][j] = s2 + buckets_d[i][j]-1;
       tailsIdx_d[i][j] = s2 + buckets_d[i][j]-1;
       s2 += buckets_d[i][j];
-
-      heads_d[i][j+1] = s2;
-      headsIdx_d[i][j+1] = s2;
-      tails_d[i][j+1] = s2 + buckets_d[i][j+1]-1;
-      tailsIdx_d[i][j+1] = s2 + buckets_d[i][j+1]-1;
-      s2 += buckets_d[i][j+1];
-
-      heads_d[i][j+2] = s2;
-      headsIdx_d[i][j+2] = s2;
-      tails_d[i][j+2] = s2 + buckets_d[i][j+2]-1;
-      tailsIdx_d[i][j+2] = s2 + buckets_d[i][j+2]-1;
-      s2 += buckets_d[i][j+2];
-
-      heads_d[i][j+3] = s2;
-      headsIdx_d[i][j+3] = s2;
-      tails_d[i][j+3] = s2 + buckets_d[i][j+3]-1;
-      tailsIdx_d[i][j+3] = s2 + buckets_d[i][j+3]-1;
-      s2 += buckets_d[i][j+3];
-
       if (j+PREFETCH_DISTANCE < 256) {
         __builtin_prefetch(&heads_d[i][j+PREFETCH_DISTANCE], 0, 3);
         __builtin_prefetch(&headsIdx_d[i][j+PREFETCH_DISTANCE], 0, 3);
@@ -684,29 +642,10 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
     }
   }
 
-  auto start = std::chrono::steady_clock::now();
-
-
-  // int s = 1; // Leave room for terminator at start
-  // int s2 = 0; // Leave room for terminator at start
-  // for (int i = 0; i < 256; i++) {
-  //   heads[i] = s;
-  //   headsIdx[i] = s;
-  //   tails[i] = s + buckets[i]-1;
-  //   tailsIdx[i] = s + buckets[i]-1;
-  //   s += buckets[i];
-  //   for (int j = 0; j < 256; j++) {
-  //     heads_d[i][j] = s2;
-  //     headsIdx_d[i][j] = s2;
-  //     tails_d[i][j] = s2 + buckets_d[i][j]-1;
-  //     tailsIdx_d[i][j] = s2 + buckets_d[i][j]-1;
-  //     s2 += buckets_d[i][j];
-  //   }
-  // }
-
   tset_global(dataSize-1, 0); tset_global(dataSize, 1); // the sentinel must be in s1, important!!!
   
   int minLastFirst = -1;
+  int maxLastSecond = -1;
   for (int i = numChunks; i-- > 0;) {
     int firstIdx = i*chunkSize;
     lcmset(firstIdx+chunkSize-1, 1);
@@ -716,6 +655,15 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       LCMbucketCombos[data[firstIdx+chunkSize-1]].insert(data[firstIdx+chunkSize]);
     }
     if (modifiedByteRanges[i].first != -1) {
+      if (maxLastSecond != -1 && maxLastSecond > modifiedByteRanges[i].second) {
+        lcmset(firstIdx+maxLastSecond, 1);
+        SA[tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]] = firstIdx+maxLastSecond;
+        tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]--;
+        LCMbucketCombos[data[firstIdx+maxLastSecond]].insert(data[firstIdx+maxLastSecond+1]);
+      } else {
+        maxLastSecond = modifiedByteRanges[i].second;
+      }
+
       int suf = modifiedByteRanges[i].first;
       lcmset(firstIdx+suf, 1);
       SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
@@ -730,35 +678,28 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       } else {
         minLastFirst = modifiedByteRanges[i].first;
       }
-      // if (modifiedByteRanges[i].second != modifiedByteRanges[i].first) {
-      //   suf = modifiedByteRanges[i].second;
-      //   lcmset(firstIdx+suf, 1);
-      //   SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
-      //   tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-      //   LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
-      // }
     }
-    
+
     // Unrolled loop with prefetching
     int j = chunkSize - 1;
     for (; j >= PREFETCH_DISTANCE; j -= PREFETCH_DISTANCE) {
-        for (int k = 0; k < PREFETCH_DISTANCE; k++) {
-            int idx = j - k + firstIdx;
-            __builtin_prefetch(&data[idx - PREFETCH_DISTANCE], 0, 0);
-            __builtin_prefetch(&data[idx - PREFETCH_DISTANCE + 1], 0, 0);
-            __builtin_prefetch(&t_global[idx - PREFETCH_DISTANCE + 1], 0, 0);
-            if (i == numChunks && j - k == chunkSize - 1) continue;
-            tset_global(idx, (data[idx] < data[idx + 1] || (data[idx] == data[idx + 1] && tget_global(idx + 1) == 1)) ? 1 : 0);
-        }
+      for (int k = 0; k < PREFETCH_DISTANCE; k++) {
+        int idx = j - k + firstIdx;
+        __builtin_prefetch(&data[idx - PREFETCH_DISTANCE], 0, 0);
+        __builtin_prefetch(&data[idx - PREFETCH_DISTANCE + 1], 0, 0);
+        __builtin_prefetch(&t_global[idx - PREFETCH_DISTANCE + 1], 0, 0);
+        if (i == numChunks && j - k == chunkSize - 1) continue;
+        tset_global(idx, (data[idx] < data[idx + 1] || (data[idx] == data[idx + 1] && tget_global(idx + 1) == 1)) ? 1 : 0);
+      }
     }
 
     // Remaining iterations
     for (; j >= 0; j--) {
-        int idx = j + firstIdx;
-        if (i == numChunks && j == chunkSize - 1) continue;
-        tset_global(idx, (data[idx] < data[idx + 1] || (data[idx] == data[idx + 1] && tget_global(idx + 1) == 1)) ? 1 : 0);
+      int idx = j + firstIdx;
+      if (i == numChunks && j == chunkSize - 1) continue;
+      tset_global(idx, (data[idx] < data[idx + 1] || (data[idx] == data[idx + 1] && tget_global(idx + 1) == 1)) ? 1 : 0);
     }
-}
+  }
 
   lcmset(dataSize-1, 1);
   SA[tailsIdx_d[data[dataSize-1]][0]] = dataSize-1;
@@ -797,45 +738,21 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // printf("%d out of %d suffixes are triplet suffixes (guaranteed placement within 2 comparisons)\n", trios, dataSize);
 
 
-  int sortStep = std::max(modSize/2, 1);
-
   SA[0] = dataSize;
 
   for (int i = 0; i < 256; i++) {
     for (int j : LCMbucketCombos[i]) {
       if (tails_d[i][j] - tailsIdx_d[i][j] > 1) {
         std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-          int d = sortStep;
-          if (sA+2 >= dataSize) return true;
-          if (sB+2 >= dataSize) return false;
-          if (sortStep <= 1) return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-          while (true) {
-            if (sA+2+d >= dataSize) return true;
-            if (sB+2+d >= dataSize) return false;
-            if (data[sA+2+d] != data[sB+2+d]) return memcmp(&data[sA+2+d-sortStep], &data[sB+2+d-sortStep], sortStep) < 0;
-            d += sortStep;
-          }
+          return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
         });
       }
     }
   }
 
-
-  // printf("LCM Readout\n");
-  // int prevBucket = -1;
-  // for (int s = 0; s < dataSize+1; s++) {
-  //   if (SA[s] == -1 || !lcmget(SA[s])) continue;
-  //   if (data[SA[s]] != prevBucket) {printf("\nBucket 0x%02X\n", data[SA[s]]); prevBucket = data[SA[s]];}
-  //   printf("Suffix: %d\n", SA[s]);
-  //   for (int i = 0; i < dataSize; i++) {
-  //     printf("%02X ", data[SA[s]+i]);
-  //     if (i > 0 && (SA[s] == dataSize-1 || lcmget(SA[s]+i))) break;
-  //   }
-  //   printf("\n");
-  // }
-  // printf("\n");
-
-  // printf("final byte: 0x%02X\n", data[dataSize-1]);
+  // TODO: Replace this naive inducing with LMS detection, added to a separate array.
+  // Afterward, perform traditional SAIS hoping to reduce required recursion.
+  // SAIS with low recursion depth is stupid fast.
 
   // for(int d = 0; d < chunkSize*2; d++) {
   //   bool found = false;
@@ -859,6 +776,21 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   auto end = std::chrono::steady_clock::now();
   auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start);
+  
+  printf("LCM Readout\n");
+  int prevBucket = -1;
+  for (int s = 0; s < dataSize+1; s++) {
+    if (SA[s] == -1 || !lcmget(SA[s])) continue;
+    if (data[SA[s]] != prevBucket) {printf("\nBucket 0x%02X\n", data[SA[s]]); prevBucket = data[SA[s]];}
+    printf("Suffix: %d\n", SA[s]);
+    for (int i = 0; i < dataSize; i++) {
+      printf("%02X ", data[SA[s]+i]);
+      if (i > 0 && (SA[s] == dataSize-1 || lcmget(SA[s]+i))) break;
+    }
+    printf("\n");
+  }
+  printf("\n");
+
 
   printf("My first placement took %.6f seconds\n", (double)time.count()/1000000000.0);
 
@@ -1111,23 +1043,23 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // std::cout << std::endl;
   // printf("\n");
 
-  // std::cout << "Final" << std::endl;
-  // for (int i = 1; i < dataSize+1; i++) {
-  //     std::cout << SA[i] << ", ";
-  // }
-  // std::cout << std::endl;
-  // printf("\n");
+  std::cout << "Final" << std::endl;
+  for (int i = 1; i < dataSize+1; i++) {
+      std::cout << SA[i] << ", ";
+  }
+  std::cout << std::endl;
+  printf("\n");
 
-  // int DSS_SA[dataSize];
-  // int bA[256];
-  // int bB[256*256];
-  // divsufsort(data, DSS_SA, dataSize, bA, bB);
+  int DSS_SA[dataSize];
+  int bA[256];
+  int bB[256*256];
+  divsufsort(data, DSS_SA, dataSize, bA, bB);
 
-  // std::cout << "\nValidated Suffix Array" << std::endl;
-  // for (int i = 0; i < dataSize; i++) {
-  //     std::cout << DSS_SA[i] << ", ";
-  // }
-  // std::cout << std::endl;
+  std::cout << "\nValidated Suffix Array" << std::endl;
+  for (int i = 0; i < dataSize; i++) {
+      std::cout << DSS_SA[i] << ", ";
+  }
+  std::cout << std::endl;
 }
 
 void genData(unsigned char *dest, int len, int chunkSize, int maxMod) {
@@ -1169,12 +1101,11 @@ void genData(unsigned char *dest, int len, int chunkSize, int maxMod) {
 
 // Main function
 int main() {
-    // Dataset 1
+  // Dataset 1
 
-
-  std::ifstream ifs("sample.bin", std::ios::binary);
+  std::ifstream ifs("sample2.bin", std::ios::binary);
   ifs.seekg(0, ifs.end);
-  size_t size = ifs.tellg(); 
+  size_t size = ifs.tellg()/16; 
   unsigned char buffer[size];
   ifs.seekg(0, ifs.beg);
   ifs.read(reinterpret_cast<char*>(buffer), size);
@@ -1209,8 +1140,8 @@ int main() {
   // int dataSize1 = sizeof(data1);
   // int chunkSize1 = 32;
 
-  // int size = 1024;
-  // unsigned char data[size];
+  // int size = 1536;
+  // unsigned char data[size+1];
   // int chunkSize = 32;
   // int maxMod = 4;
 
