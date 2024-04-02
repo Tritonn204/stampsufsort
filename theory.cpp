@@ -652,7 +652,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       //   LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
       // }
     }
-    for (int j = chunkSize-2; j >= 0; j--) {
+    for (int j = chunkSize-1; j >= 0; j--) {
+      if (i == numChunks && j == chunkSize-1) continue;
       int idx = j+firstIdx;
       tset_global(idx, (data[idx]<data[idx+1] || (data[idx]==data[idx+1] && tget_global(idx+1)==1))?1:0);
     } 
