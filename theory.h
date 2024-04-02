@@ -4,6 +4,15 @@
 #include <cstring>
 #include <string>
 
+#define SUFFIX_MASK 0x1FFFF
+#define SUFFIX_SHIFT 17
+
+#define PREFETCH_DISTANCE 32
+
+#define getsuf(c0) ((c0) & SUFFIX_MASK)
+#define getflag_A(c0) (((c0) >> SUFFIX_SHIFT) & 1)
+#define getflag_B(c0) (((c0) >> (SUFFIX_SHIFT+1)) & 1)
+
 typedef struct LMSInfo {
     int rank;
     int len;
