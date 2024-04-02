@@ -34,6 +34,12 @@ extern "C" {
 # include <omp.h>
 #endif
 
+#include <chrono>
+#include <iostream>
+
+auto start2 = std::chrono::steady_clock::now();
+auto end2 = std::chrono::steady_clock::now();
+auto time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
 
 /*- Private Functions -*/
 
@@ -63,6 +69,9 @@ sort_typeBstar(const sauchar_t *T, saidx_t *SA,
   /* Count the number of occurrences of the first one or two characters of each
      type A, B and B* suffix. Moreover, store the beginning position of all
      type B* suffixes into the array SA. */
+
+  // start2 = std::chrono::steady_clock::now();
+  
   for(i = n - 1, m = n, c0 = T[n - 1]; 0 <= i;) {
     /* type A suffix. */
     do { ++BUCKET_A(c1 = c0); } while((0 <= --i) && ((c0 = T[i]) >= c1));
@@ -77,6 +86,8 @@ sort_typeBstar(const sauchar_t *T, saidx_t *SA,
     }
   }
   m = n - m;
+  // end2 = std::chrono::steady_clock::now();
+  // time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
 /*
 note:
   A type B* suffix is lexicographically smaller than a type B suffix that
@@ -354,6 +365,8 @@ divsufsort(const sauchar_t *T, saidx_t *SA, saidx_t n, saidx_t *bucket_A, saidx_
   } else {
     err = -2;
   }
+
+  // printf("Identifying suffix types took %.6f seconds\n", (double)time2.count()/1000000000.0);
 
   return err;
 }

@@ -1,0 +1,1 @@
+clang++ -O3 -std=c++20 -march=native -o theory.exe divsufsort.cpp trsort.c sssort.c theory.cpp sais.cpp

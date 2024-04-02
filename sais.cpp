@@ -8,6 +8,7 @@
 using namespace std;
 #include <memory.h>
 #include <time.h>
+#include <chrono>
 
 #include "sais.h"
 
@@ -72,17 +73,22 @@ void induceSAs(unsigned char *t, int *SA, unsigned char *s, int *bkt,
 void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   static double redu_ratio=0;
   static long sum_n=0, sum_n1=0;
-  fprintf(stderr, "\nLevel: %d\n", level);
+  // fprintf(stderr, "\nLevel: %d\n", level);
 
   int i, j;
   unsigned char *t=(unsigned char *)malloc(n/8+1); // LS-type array in bits
 
   // stage 1: reduce the problem by at least 1/2
 
-  timer_start();
+  // timer_start();
   // Classify the type of each character
+  // auto start2 = std::chrono::steady_clock::now();
   tset(n-2, 0); tset(n-1, 1); // the sentinel must be in s1, important!!!
   for(i=n-3; i>=0; i--) tset(i, (chr(i)<chr(i+1) || (chr(i)==chr(i+1) && tget(i+1)==1))?1:0);
+  // auto end2 = std::chrono::steady_clock::now();
+  // auto time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
+
+  // if (level == 0) printf("SAIS LMS detection took %.6f seconds\n", (double)time2.count()/1000000000.0);
 
   int *bkt = (int *)malloc(sizeof(int)*(K+1)); // bucket counters
 
@@ -93,39 +99,44 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   {
     if(isLMS(i)) {
       SA[bkt[chr(i)]--]=i;
-      printf("%d, ", i);
     }
   }
-  printf("\n");
+  // printf("\n");
   SA[0]=n-1; // set the single sentinel LMS-substring
 
-  std::cout << "REFERENCE: After LMS Placement" << std::endl;
-  for (i = 0; i < n; i++) {
-    std::cout << SA[i] << ", ";
-  }
-  std::cout << std::endl;
+  // std::cout << "REFERENCE: After LMS Placement" << std::endl;
+  // for (i = 0; i < n; i++) {
+  //   std::cout << SA[i] << ", ";
+  // }
+  // std::cout << std::endl;
 
+  // start2 = std::chrono::steady_clock::now();
   induceSAl(t, SA, s, bkt, n, K, cs, level); 
+  // end2 = std::chrono::steady_clock::now();
+  // time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
 
-  std::cout << "REFERENCE: After L induce" << std::endl;
-  for (i = 0; i < n; i++) {
-    std::cout << SA[i] << ", ";
-  }
-  std::cout << std::endl;
+  // if (level == 0) printf("SAIS L inducing took %.6f seconds\n", (double)time2.count()/1000000000.0);
+  // std::cout << "REFERENCE: After L induce" << std::endl;
+  // for (i = 0; i < n; i++) {
+  //   std::cout << SA[i] << ", ";
+  // }
+  // std::cout << std::endl;
 
   induceSAs(t, SA, s, bkt, n, K, cs); 
 
-  std::cout << "REFERENCE: After S induce" << std::endl;
-  for (i = 0; i < n; i++) {
-    std::cout << SA[i] << ", ";
-  }
-  std::cout << std::endl;
+  // if (level == 0) {
+  //   std::cout << "REFERENCE: After S induce" << std::endl;
+  //   for (i = 0; i < n; i++) {
+  //     std::cout << SA[i] << ", ";
+  //   }
+  //   std::cout << std::endl;
 
-  timer_finish("Time for sorting all the LMS-substrings");
+  //   timer_finish("Time for sorting all the LMS-substrings");
+  // }
 
   free(bkt);
 
-  timer_start();
+  // timer_start();
 
   // compact all the sorted substrings into the first n1 items of s
   // 2*n1 must be not larger than n (proveable)
@@ -138,12 +149,15 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   for(i=n1; i<n; i++) SA[i]=EMPTY;
   // find the lexicographic names of all substrings
 
-  std::cout << "REFERENCE: After LMS Packing" << std::endl;
-  for (int i = 0; i < n; i++) {
-      std::cout << SA[i] << ", ";
-  }
-  std::cout << std::endl;
+  // if (level == 0) {
+  //   std::cout << "REFERENCE: After LMS Packing" << std::endl;
+  //   for (int i = 0; i < n; i++) {
+  //       std::cout << SA[i] << ", ";
+  //   }
+  //   std::cout << std::endl;
+  // }
 
+  // start2 = std::chrono::steady_clock::now();
   int name=0, prev=-1;
   for(i=0; i<n1; i++) {
 	  int pos=SA[i]; bool diff=false;
@@ -163,21 +177,26 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   }
   for(i=n-1, j=n-1; i>=n1; i--)
 	  if(SA[i]!=EMPTY) SA[j--]=SA[i];
+  // end2 = std::chrono::steady_clock::now();
+  // time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
+  // if (level == 0) printf("SAIS naming took %.6f seconds\n", (double)time2.count()/1000000000.0);
 
-  std::cout << "REFERENCE: S1 Is Ready" << std::endl;
-  for (int i = 0; i < n; i++) {
-      std::cout << SA[i] << ", ";
-  }
-  std::cout << std::endl;
+  // if (level == 0) {
+  //   std::cout << "REFERENCE: S1 Is Ready" << std::endl;
+  //   for (int i = 0; i < n; i++) {
+  //       std::cout << SA[i] << ", ";
+  //   }
+  //   std::cout << std::endl;
+  // }
 
    // s1 is done now
   int *SA1=SA, *s1=SA+n-n1;
 
-  timer_finish("Time for naming");
+  // timer_finish("Time for naming");
 
   // stage 2: solve the reduced problem
 
-  fprintf(stderr, "\nReduction ratio: %.2lf", (double)n1/n);
+  // fprintf(stderr, "\nReduction ratio: %.2lf", (double)n1/n);
   redu_ratio += (double)n1/n;
   sum_n1+=n1; sum_n+=n;
   // recurse if names are not yet unique
@@ -185,16 +204,16 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
     SA_IS((unsigned char*)s1, SA1, n1, name-1, sizeof(int), level+1);
   } else { // generate the suffix array of s1 directly
     for(i=0; i<n1; i++) SA1[s1[i]] = i;
-	cerr << endl << "Recusion ends";
-	fprintf(stderr, "\nMean reduction ratio over iterations: %.2lf", redu_ratio/(level+1));
-	fprintf(stderr, "\nMean reduction ratio over characters: %.2lf", (double)sum_n1/sum_n);
+	// cerr << endl << "Recusion ends";
+	// fprintf(stderr, "\nMean reduction ratio over iterations: %.2lf", redu_ratio/(level+1));
+	// fprintf(stderr, "\nMean reduction ratio over characters: %.2lf", (double)sum_n1/sum_n);
   }
 
-  fprintf(stderr, "\nLevel: %d", level);
+  // fprintf(stderr, "\nLevel: %d", level);
 
   // stage 3: induce the result for the original problem
 
-  timer_start();
+  // timer_start();
 
   bkt = (int *)malloc(sizeof(int)*(K+1)); // bucket counters
 
@@ -215,7 +234,7 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
 
   induceSAl(t, SA, s, bkt, n, K, cs, level); 
   induceSAs(t, SA, s, bkt, n, K, cs); 
-  timer_finish("Time for sorting all the suffixes");
+  // timer_finish("Time for sorting all the suffixes");
 
   free(bkt); 
   free(t);
