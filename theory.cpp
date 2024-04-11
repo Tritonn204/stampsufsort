@@ -784,6 +784,9 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
     }
   }
 
+  // I need to reorder the chunk progression based on their relative order at d distance from their origins...
+  // Precomputed table for each d value maybe?
+
   for (int d = 1; d < dataSize; d++) {
     if (tget_local(dataSize)) goto after;
     if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
@@ -822,6 +825,7 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
     }
   }
 
+  // MARKER
 
   // for (;;) {
   //   bool found = false;
@@ -1033,28 +1037,28 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   int compares[] = {2700, 2698};
 
-  printf("LMS Compare\n");
-  int prevBucket = -1;
-  int lastComp = NULL;
-  for (int s = 0; s < 2; s++) {
-    if (data[compares[s]] != prevBucket) {printf("\nBucket 0x%02X\n", data[compares[s]]); prevBucket = data[compares[s]]; lastComp = NULL;}
-    printf("Suffix: %d\n", compares[s]);
-    for (int i = 0; i < 5; i++) {
-      printf("%02X ", data[compares[s]+i]);
-      if (i > 0 && (compares[s] == dataSize-1)) {
-        if (lastComp == NULL) {
-          break;
-        }
-      } else {
-        if (lastComp != NULL && data[compares[s]+i] != data[lastComp+i]) {
-          break;
-        }
-      }
-    }
-    lastComp = compares[s];
-    printf("\n");
-  }
-  printf("\n");
+  // printf("LMS Compare\n");
+  // int prevBucket = -1;
+  // int lastComp = NULL;
+  // for (int s = 0; s < 2; s++) {
+  //   if (data[compares[s]] != prevBucket) {printf("\nBucket 0x%02X\n", data[compares[s]]); prevBucket = data[compares[s]]; lastComp = NULL;}
+  //   printf("Suffix: %d\n", compares[s]);
+  //   for (int i = 0; i < 5; i++) {
+  //     printf("%02X ", data[compares[s]+i]);
+  //     if (i > 0 && (compares[s] == dataSize-1)) {
+  //       if (lastComp == NULL) {
+  //         break;
+  //       }
+  //     } else {
+  //       if (lastComp != NULL && data[compares[s]+i] != data[lastComp+i]) {
+  //         break;
+  //       }
+  //     }
+  //   }
+  //   lastComp = compares[s];
+  //   printf("\n");
+  // }
+  // printf("\n");
 
   // printf("LCM Readout\n");
   // int prevBucket = -1;
