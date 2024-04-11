@@ -622,13 +622,11 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
     if (i < dataSize-1) {
       tset_global(i, (data[i] < data[i + 1] || (data[i] == data[i + 1] && tget_global(i + 1) == 1)) ? 1 : 0);
       buckets_d[data[i]][data[i+1]]++;
-      if (i+PREFETCH_DISTANCE < dataSize) {
+      if (i-PREFETCH_DISTANCE >= 0) {
         __builtin_prefetch(&data[i-PREFETCH_DISTANCE], 0, 3);
-        __builtin_prefetch(&buckets[data[i-PREFETCH_DISTANCE]], 0, 3);
-        if (i+PREFETCH_DISTANCE+1 < dataSize) {
-          __builtin_prefetch(&buckets_d[data[i-PREFETCH_DISTANCE]][data[i-PREFETCH_DISTANCE+1]], 0, 3);
-        }
       }
+    } else {
+      buckets_d[data[i]][0]++;
     }
   }
 
@@ -637,6 +635,7 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   int s = 1; // Leave room for terminator at start
   int s2 = 1; // Leave room for terminator at start
   for (int i = 0; i < 256; i++) {
+    if (buckets[i] == 0) continue;
     heads[i] = s;
     headsIdx[i] = s;
     tails[i] = s + buckets[i]-1;
@@ -668,8 +667,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       lcmset(firstIdx+chunkSize-1, 1);
       SA[tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]] = firstIdx+chunkSize-1;
       tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]--;
-      LCMbuckets.insert(data[firstIdx+chunkSize-1]);
-      LCMbucketCombos[data[firstIdx+chunkSize-1]].insert(data[firstIdx+chunkSize]);
+      // LCMbuckets.insert(data[firstIdx+chunkSize-1]);
+      // LCMbucketCombos[data[firstIdx+chunkSize-1]].insert(data[firstIdx+chunkSize]);
       lset_global(firstIdx+chunkSize-1, 1);
     }
     if (modifiedByteRanges[i].first != -1) {
@@ -677,8 +676,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
         lcmset(firstIdx+maxLastSecond, 1);
         SA[tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]] = firstIdx+maxLastSecond;
         tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]--;
-        LCMbuckets.insert(data[firstIdx+maxLastSecond]);
-        LCMbucketCombos[data[firstIdx+maxLastSecond]].insert(data[firstIdx+maxLastSecond+1]);
+        // LCMbuckets.insert(data[firstIdx+maxLastSecond]);
+        // LCMbucketCombos[data[firstIdx+maxLastSecond]].insert(data[firstIdx+maxLastSecond+1]);
         lset_global(firstIdx+maxLastSecond, 1);
       } else {
         maxLastSecond = modifiedByteRanges[i].second;
@@ -689,8 +688,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
         lcmset(firstIdx+suf, 1);
         SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
         tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-        LCMbuckets.insert(data[firstIdx+suf]);
-        LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
+        // LCMbuckets.insert(data[firstIdx+suf]);
+        // LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
         lset_global(firstIdx+suf, 1);
       }
 
@@ -698,16 +697,16 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       lcmset(firstIdx+suf, 1);
       SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
       tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-      LCMbuckets.insert(data[firstIdx+suf]);
-      LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
+      // LCMbuckets.insert(data[firstIdx+suf]);
+      // LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
       lset_global(firstIdx+suf, 1);
 
       if (minLastFirst != -1 && minLastFirst < modifiedByteRanges[i].first) {
         lcmset(firstIdx+minLastFirst, 1);
         SA[tailsIdx_d[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]]] = firstIdx+minLastFirst;
         tailsIdx_d[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]]--;
-        LCMbuckets.insert(data[firstIdx+minLastFirst]);
-        LCMbucketCombos[data[firstIdx+minLastFirst]].insert(data[firstIdx+minLastFirst+1]);
+        // LCMbuckets.insert(data[firstIdx+minLastFirst]);
+        // LCMbucketCombos[data[firstIdx+minLastFirst]].insert(data[firstIdx+minLastFirst+1]);
         lset_global(firstIdx+minLastFirst, 1);
       } else {
         minLastFirst = modifiedByteRanges[i].first;
@@ -783,8 +782,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   //   lOffset++;
   // }
 
-  for (int i : LCMbuckets) {
-    for (int j : LCMbucketCombos[i]) {
+  for (int i = 0; i < 256; i++) {
+    for (int j = 0; j < 256; j++) {
       __builtin_prefetch(&data[SA[tailsIdx_d[i][j]+1]], 0, 3);
       if (tails_d[i][j] - tailsIdx_d[i][j] > 1) {
         std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
@@ -813,8 +812,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   after:
 
-  for (int i : LCMbuckets) {
-    for (int j : LCMbucketCombos[i]) {
+  for (int i = 0; i < 256; i++) {
+    for (int j = 0; j < 256; j++) {
       for (int d = 1; d < dataSize; d++) {
         bool found = false;
 
@@ -844,120 +843,6 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   }
 
   // MARKER
-
-  // for (;;) {
-  //   bool found = false;
-  //   for (int i = 0; i < dataSize+1; i++) {
-  //     if (tget_local(SA[i]) || SA[i]-1 < 1) continue;
-  //     if (lcmget(SA[i]-1)) {tset_local(SA[i], 1); continue;}
-  //     found = true;
-  //     // if (tget_global(SA[i]-1) && !tget_global(SA[i]-1-1)) {
-  //       tset_local(SA[i], 1);
-  //       lset_global(SA[i]-1, 1);
-
-  //       SA[headsIdx_d[data[SA[i]-1]][data[SA[i]]]] = SA[i]-1;
-  //       headsIdx_d[data[SA[i]-1]][data[SA[i]]]++;
-  //     // }
-  //   }
-  //   if (!found) break;
-  // }
-
-  // for (int i = 0; i < dataSize-1; i+= 8) {
-  //   __builtin_prefetch(&SA[i + PREFETCH_DISTANCE*2], 0, 3);
-  //   bool wasSet[7] = {false};
-  //   if (i > 0 && !lget_global(i) && tget_global(i) && !tget_global(i-1)) {
-  //     SA[headsIdx_d[data[i]][data[i+1]]] = i;
-  //     headsIdx_d[data[i]][data[i+1]]++;
-  //     wasSet[0] = true;
-  //   }
-  //   if (i+1 >= dataSize) break;
-  //   if (!wasSet[0] && !lget_global(i+1) && tget_global(i+1) && !tget_global(i)) {
-  //     SA[headsIdx_d[data[i+1]][data[i+2]]] = i+1;
-  //     headsIdx_d[data[i+1]][data[i+2]]++;
-  //     wasSet[1] = true;
-  //   }
-  //   if (i+2 >= dataSize) break;
-  //   if (!wasSet[1] && !lget_global(i+2) && tget_global(i+2) && !tget_global(i+1)) {
-  //     SA[headsIdx_d[data[i+2]][data[i+3]]] = i+2;
-  //     headsIdx_d[data[i+2]][data[i+3]]++;
-  //     wasSet[2] = true;
-  //   }
-  //   if (i+3 >= dataSize) break;
-  //   if (!wasSet[2] && !lget_global(i+3) && tget_global(i+3) && !tget_global(i+2)) {
-  //     SA[headsIdx_d[data[i+3]][data[i+4]]] = i+3;
-  //     headsIdx_d[data[i+3]][data[i+4]]++;
-  //     wasSet[3] = true;
-  //   }
-  //   if (i+4 >= dataSize) break;
-  //   if (!wasSet[3] && !lget_global(i+4) && tget_global(i+4) && !tget_global(i+3)) {
-  //     SA[headsIdx_d[data[i+4]][data[i+5]]] = i+4;
-  //     headsIdx_d[data[i+4]][data[i+5]]++;
-  //     wasSet[4] = true;
-  //   }
-  //   if (i+5 >= dataSize) break;
-  //   if (!wasSet[4] && !lget_global(i+5) && tget_global(i+5) && !tget_global(i+4)) {
-  //     SA[headsIdx_d[data[i+5]][data[i+6]]] = i+5;
-  //     headsIdx_d[data[i+5]][data[i+6]]++;
-  //     wasSet[5] = true;
-  //   }
-  //   if (i+6 >= dataSize) break;
-  //   if (!wasSet[5] && !lget_global(i+6) && tget_global(i+6) && !tget_global(i+5)) {
-  //     SA[headsIdx_d[data[i+6]][data[i+7]]] = i+6;
-  //     headsIdx_d[data[i+6]][data[i+7]]++;
-  //     wasSet[6] = true;
-  //   }
-  //   if (i+7 >= dataSize) break;
-  //   if (!wasSet[6] && !lget_global(i+7) && tget_global(i+7) && !tget_global(i+6)) {
-  //     SA[headsIdx_d[data[i+7]][data[i+8]]] = i+7;
-  //     headsIdx_d[data[i+7]][data[i+8]]++;
-  //   }
-  // }
-
-
-  // int n1=0;
-  // for(int i=0; i<dataSize+1; i++)
-  //   if(SA[i] > 0 && tget_global(SA[i]) && !tget_global(SA[i]-1))
-  //     SA[n1++]=SA[i];
-
-  // std::fill_n(SA+n1, dataSize+1-n1, -1);
-
-  // std::cout << "After LMS Packing" << std::endl;
-  // for (int i = 0; i < dataSize+1; i++) {
-  //     std::cout << SA[i] << ", ";
-  // }
-  // std::cout << std::endl;
-
-  // int name = 0;
-  // int lastLMS = -1;
-  // for (int i = 0; i < n1; i++) {
-  //   int pos = SA[i]; bool diff = false;
-  //   for(int d=0; d<dataSize+1; d++)
-  //     if(lastLMS == dataSize || lastLMS==-1 || pos+d==dataSize || lastLMS+d==dataSize ||
-  //       tget_global(pos+d)!=tget_global(lastLMS+d) ||
-  //       data[pos+d]!=data[lastLMS+d])
-  //     { diff=true; break; }
-  //     else
-  //       if(d>0 && ((tget_global(pos+d) && !tget_global(pos+d-1)) || (tget_global(lastLMS+d) && !tget_global(lastLMS+d-1))))
-  //         break;
-
-  //   if(diff) 
-  //     { name++; lastLMS=pos; }
-	//   pos=pos/2; //(pos%2==0)?pos/2:(pos-1)/2;
-  //   SA[n1+pos]=name-1;
-  // }
-
-  // for(int i=dataSize, j=dataSize; i>=n1; i--)
-	//   if(SA[i]!=-1) SA[j--]=SA[i];
-
-  // s1 is done now
-  // int *SA1=SA, *s1=SA+dataSize+1-n1;
-
-  // std::cout << "\nS1 is ready" << std::endl;
-  // for (int i = 0; i < dataSize+1; i++) {
-  //     std::cout << SA1[i] << ", ";
-  // }
-  // std::cout << std::endl;
-  // printf("\n");
 
   bool ready = false;
 
@@ -1161,31 +1046,31 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // std::cout << std::endl;
   // printf("\n");
 
-  std::cout << "my LMS" << std::endl;
-  for (int i = 1; i < dataSize+1; i++) {
-    if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
-    // if (lcmget(SA[i])) {
-      std::cout << SA[i] << ", ";
-    }
-  }
-  std::cout << std::endl;
-  printf("\n");
+  // std::cout << "my LMS" << std::endl;
+  // for (int i = 1; i < dataSize+1; i++) {
+  //   // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
+  //   // if (lcmget(SA[i])) {
+  //     std::cout << SA[i] << ", ";
+  //   // }
+  // }
+  // std::cout << std::endl;
+  // printf("\n");
 
-  int DSS_SA[dataSize];
-  int bA[256];
-  int bB[256*256];
-  divsufsort(data, DSS_SA, dataSize, bA, bB);
+  // int DSS_SA[dataSize];
+  // int bA[256];
+  // int bB[256*256];
+  // divsufsort(data, DSS_SA, dataSize, bA, bB);
 
-  std::cout << "\nValidated LMS order" << std::endl;
-  for (int i = 0; i < dataSize; i++) {
-    if (tget_global(DSS_SA[i]) && !tget_global(DSS_SA[i]-1)) {
-      std::cout << DSS_SA[i] << ", ";
-    } 
-    // else {
-    //   std::cout << "-1" << ", ";
-    // }
-  }
-  std::cout << std::endl;
+  // std::cout << "\nValidated LMS order" << std::endl;
+  // for (int i = 0; i < dataSize; i++) {
+  //   // if (tget_global(DSS_SA[i]) && !tget_global(DSS_SA[i]-1)) {
+  //     std::cout << DSS_SA[i] << ", ";
+  //   // } 
+  //   // else {
+  //   //   std::cout << "-1" << ", ";
+  //   // }
+  // }
+  // std::cout << std::endl;
 }
 
 void genData(unsigned char *dest, int len, int chunkSize, int maxMod) {
@@ -1231,7 +1116,7 @@ int main() {
 
   std::ifstream ifs("sample.bin", std::ios::binary);
   ifs.seekg(0, ifs.end);
-  size_t size = ifs.tellg()/12;
+  size_t size = ifs.tellg();
   unsigned char buffer[size];
   ifs.seekg(0, ifs.beg);
   ifs.read(reinterpret_cast<char*>(buffer), size);
