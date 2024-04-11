@@ -28,8 +28,9 @@ Please see the file LICENSE for full copyright information.
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <iostream>
+#include <chrono>
 
-#include "hugepages.h"
 
 #if defined(LIBSAIS_OPENMP)
     #include <omp.h>
@@ -178,7 +179,7 @@ static void * libsais_align_up(const void * address, size_t alignment)
 
 static void * libsais_alloc_aligned(size_t size, size_t alignment)
 {
-    void * address = malloc_huge_pages(size + sizeof(short) + alignment - 1);
+    void * address = malloc(size + sizeof(short) + alignment - 1);
     if (address != NULL)
     {
         void * aligned_address = libsais_align_up((void *)((ptrdiff_t)address + (ptrdiff_t)(sizeof(short))), alignment);
@@ -194,7 +195,7 @@ static void libsais_free_aligned(void * aligned_address)
 {
     if (aligned_address != NULL)
     {
-        free_huge_pages((void *)((ptrdiff_t)aligned_address - ((short *)aligned_address)[-1]));
+        free((void *)((ptrdiff_t)aligned_address - ((short *)aligned_address)[-1]));
     }
 }
 
@@ -5815,9 +5816,15 @@ static sa_sint_t libsais_induce_final_order_8u_omp(const uint8_t * RESTRICT T, s
 {
     if (!bwt)
     {
+        auto start = std::chrono::steady_clock::now();
+
         libsais_final_sorting_scan_left_to_right_8u_omp(T, SA, n, &buckets[6 * ALPHABET_SIZE], threads, thread_state);
         if (threads > 1 && n >= 65536) { libsais_clear_lms_suffixes_omp(SA, n, ALPHABET_SIZE, &buckets[6 * ALPHABET_SIZE], &buckets[7 * ALPHABET_SIZE], threads); }
         libsais_final_sorting_scan_right_to_left_8u_omp(T, SA, n, &buckets[7 * ALPHABET_SIZE], threads, thread_state);
+        auto end = std::chrono::steady_clock::now();
+        auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start);
+
+        // printf("libsais after recursion took %.6f seconds\n", (double)time.count()/1000000000.0);
         return 0;
     }
     else if (I != NULL)

@@ -360,8 +360,17 @@ divsufsort(const sauchar_t *T, saidx_t *SA, saidx_t n, saidx_t *bucket_A, saidx_
   
   /* Suffixsort. */
   if((bucket_A != NULL) && (bucket_B != NULL)) {
+    // start2 = std::chrono::steady_clock::now();
+
     m = sort_typeBstar(T, SA, bucket_A, bucket_B, n);
+    // end2 = std::chrono::steady_clock::now();
+    // time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
+
+    // printf("\ndivsufsort: construct_SA took %.6f seconds\n", (double)time2.count()/1000000000.0);
     construct_SA(T, SA, bucket_A, bucket_B, n, m);
+
+
+
   } else {
     err = -2;
   }

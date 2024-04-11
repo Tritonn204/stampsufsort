@@ -104,11 +104,14 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   // printf("\n");
   SA[0]=n-1; // set the single sentinel LMS-substring
 
-  // std::cout << "REFERENCE: After LMS Placement" << std::endl;
-  // for (i = 0; i < n; i++) {
-  //   std::cout << SA[i] << ", ";
+  // if (level == 0) {
+  //   std::cout << "REFERENCE: After LMS Placement" << std::endl;
+  //   for (i = 0; i < n; i++) {
+  //     if (isLMS(SA[i]))
+  //       std::cout << SA[i] << ", ";
+  //   }
+  //   std::cout << std::endl;
   // }
-  // std::cout << std::endl;
 
   // start2 = std::chrono::steady_clock::now();
   induceSAl(t, SA, s, bkt, n, K, cs, level); 
@@ -132,6 +135,15 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   //   std::cout << std::endl;
 
   //   timer_finish("Time for sorting all the LMS-substrings");
+  // }
+
+  // if (level == 0) {
+  //   std::cout << "REFERENCE: After LMS Placement" << std::endl;
+  //   for (i = 0; i < n; i++) {
+  //     if (isLMS(SA[i]))
+  //       std::cout << SA[i] << ", ";
+  //   }
+  //   std::cout << std::endl;
   // }
 
   free(bkt);
@@ -209,11 +221,13 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
 	// fprintf(stderr, "\nMean reduction ratio over characters: %.2lf", (double)sum_n1/sum_n);
   }
 
-  // fprintf(stderr, "\nLevel: %d", level);
+  // fprintf(stderr, "\nLevel: %d\n", level);
 
   // stage 3: induce the result for the original problem
 
   // timer_start();
+
+  auto start2 = std::chrono::steady_clock::now();
 
   bkt = (int *)malloc(sizeof(int)*(K+1)); // bucket counters
 
@@ -235,6 +249,11 @@ void SA_IS(unsigned char *s, int *SA, int n, int K, int cs, int level) {
   induceSAl(t, SA, s, bkt, n, K, cs, level); 
   induceSAs(t, SA, s, bkt, n, K, cs); 
   // timer_finish("Time for sorting all the suffixes");
+
+  auto end2 = std::chrono::steady_clock::now();
+  auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
+
+  // if (level == 0) printf("\nSAIS: after recursion took %.6f seconds\n", (double)time.count()/1000000000.0);
 
   free(bkt); 
   free(t);
