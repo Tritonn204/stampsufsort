@@ -534,12 +534,6 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   unsigned char* finalChunk = new unsigned char[chunkSize];
   unsigned char* runningChunk = new unsigned char[chunkSize];
 
-  
-  std::vector<std::vector<std::vector<int>>> orderTable;
-  orderTable.resize(256);
-  for(int i = 0; i < 256; i++) {
-    orderTable[i].resize(256);
-  }
 
   int* SA = new int[dataSize + 1];
   std::fill_n(SA, dataSize + 1, -1);
@@ -690,15 +684,17 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
         maxLastSecond = modifiedByteRanges[i].second;
       }
 
-      int suf = modifiedByteRanges[i].second;
-      lcmset(firstIdx+suf, 1);
-      SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
-      tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-      LCMbuckets.insert(data[firstIdx+suf]);
-      LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
-      lset_global(firstIdx+suf, 1);
+      for (int j = modifiedByteRanges[i].second; j > modifiedByteRanges[i].first; j--) {
+        int suf = j;
+        lcmset(firstIdx+suf, 1);
+        SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
+        tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
+        LCMbuckets.insert(data[firstIdx+suf]);
+        LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
+        lset_global(firstIdx+suf, 1);
+      }
 
-      suf = modifiedByteRanges[i].first;
+      int suf = modifiedByteRanges[i].first;
       lcmset(firstIdx+suf, 1);
       SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
       tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
@@ -795,65 +791,57 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
           return sA == dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
         });
       }
-      orderTable[i][j].insert(orderTable[i][j].end(), &SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1]);
     }
   }
 
-  std::vector<unsigned char> *prevOrder;
-  for (int d = 1; d < dataSize; d++) {
-    for (int i : LCMbuckets) {
-      for (int j : LCMbucketCombos[i]) {
-        prevOrder = &orderTable[i][j][d-1];
-        for (const int k : *prevOrder) {
-          if (tget_local(dataSize)) continue;
-          if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); continue;}
-          lset_global(dataSize-d, 1);
-          
-        }
-      }
-    }
-  }
 
   // I need to reorder the chunk progression based on their relative order at d distance from their origins...
-  // Precomputed table for each d value maybe?
+  // Precomputed table for each d value maybe? (DISPROVEN, too slow)
 
-  // for (int d = 1; d < dataSize; d++) {
-  //   if (tget_local(dataSize)) goto after;
-  //   if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
-  //   lset_global(dataSize-d, 1);
-  //   if (d == 1) {
-  //     SA[headsIdx_d[data[dataSize-d]][0]] = dataSize-d;
-  //     headsIdx_d[data[dataSize-d]][0]++;
-  //   } else {
-  //     SA[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
-  //     headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
-  //   }
-  // }
+  for (int d = 1; d < dataSize; d++) {
+    if (tget_local(dataSize)) goto after;
+    if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
+    lset_global(dataSize-d, 1);
+    if (d == 1) {
+      SA[headsIdx_d[data[dataSize-d]][0]] = dataSize-d;
+      headsIdx_d[data[dataSize-d]][0]++;
+    } else {
+      SA[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
+      headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
+    }
+  }
 
-  // after:
+  after:
 
-  // for (int i : LCMbuckets) {
-  //   for (int j : LCMbucketCombos[i]) {
-  //     for (int d = 1; d < dataSize; d++) {
-  //       bool found = false;
+  for (int i : LCMbuckets) {
+    for (int j : LCMbucketCombos[i]) {
+      for (int d = 1; d < dataSize; d++) {
+        bool found = false;
 
-  //       for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
-  //         if (tget_local(SA[k]) || SA[k]-d < 1) continue;
-  //         if (d > 0 && lcmget(SA[k]-d)) {tset_local(SA[k], 1); continue;}
-  //         found = true;
-  //         lset_global(SA[k]-d, 1);
-  //         if (d == 1) {
-  //           SA[headsIdx_d[data[SA[k]-d]][i]] = SA[k]-d;
-  //           headsIdx_d[data[SA[k]-d]][i]++;
-  //         } else {
-  //           SA[headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]] = SA[k]-d;
-  //           headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]++;
-  //         }
-  //       }
-  //       if (!found) break;
-  //     }
-  //   }
-  // }
+        // std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB){
+        //   return data[sA-d] < data[sB-d];
+        // });
+
+        for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
+          if (tget_local(SA[k]) || SA[k]-d < 1) continue;
+          if (d > 0 && lcmget(SA[k]-d)) {tset_local(SA[k], 1); continue;}
+          found = true;
+          lset_global(SA[k]-d, 1);
+          if (d == 1) {
+            SA[headsIdx_d[data[SA[k]-d]][i]] = SA[k]-d;
+            headsIdx_d[data[SA[k]-d]][i]++;
+          } else {
+            SA[headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]] = SA[k]-d;
+            headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]++;
+          }
+        }
+        if (!found) break;
+      }
+      // std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB){
+      //   return sA == dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+      // });
+    }
+  }
 
   // MARKER
 
