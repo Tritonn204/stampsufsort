@@ -525,6 +525,9 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   int (*tails_d)[256] = new int[256][256]();
   int (*headsIdx_d)[256] = new int[256][256]();
   int (*tailsIdx_d)[256] = new int[256][256]();
+  int (*sortCount)[256] = new int[256][256]();
+
+  std::vector<std::vector<std::set<int, std::greater<int>>>> prefixLen(256, std::vector<std::set<int, std::greater<int>>>(256));
 
   std::set<unsigned char> LCMbuckets;
   std::set<unsigned char>* LCMbucketCombos = new std::set<unsigned char>[256];
@@ -661,8 +664,12 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   
   int minLastFirst = -1;
   int maxLastSecond = -1;
+  int lastLCMpos = -1;
+  int newLCMlen = 0;
+
   for (int i = numChunks; i-- > 0;) {
     int firstIdx = i*chunkSize;
+
     if (i < numChunks-1 && modifiedByteRanges[i].second+1 < chunkSize-1 && chunkTipOffsets[i] != -1) {
       lcmset(firstIdx+chunkSize-1, 1);
       SA[tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]] = firstIdx+chunkSize-1;
@@ -670,47 +677,73 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       // LCMbuckets.insert(data[firstIdx+chunkSize-1]);
       // LCMbucketCombos[data[firstIdx+chunkSize-1]].insert(data[firstIdx+chunkSize]);
       lset_global(firstIdx+chunkSize-1, 1);
+      if (i < numChunks-1) {
+        newLCMlen = 1;
+      } else {
+        newLCMlen = modifiedByteRanges[i+1].first+1;
+      }
+      prefixLen[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]].insert(newLCMlen);
     }
     if (modifiedByteRanges[i].first != -1) {
-      if (maxLastSecond != -1 && maxLastSecond > modifiedByteRanges[i].second) {
-        lcmset(firstIdx+maxLastSecond, 1);
-        SA[tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]] = firstIdx+maxLastSecond;
-        tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]--;
-        // LCMbuckets.insert(data[firstIdx+maxLastSecond]);
-        // LCMbucketCombos[data[firstIdx+maxLastSecond]].insert(data[firstIdx+maxLastSecond+1]);
-        lset_global(firstIdx+maxLastSecond, 1);
-      } else {
-        maxLastSecond = modifiedByteRanges[i].second;
-      }
+      // if (maxLastSecond != -1 && maxLastSecond > modifiedByteRanges[i].second) {
+      //   lcmset(firstIdx+maxLastSecond, 1);
+      //   SA[tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]] = firstIdx+maxLastSecond;
+      //   tailsIdx_d[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]]--;
+      //   // LCMbuckets.insert(data[firstIdx+maxLastSecond]);
+      //   // LCMbucketCombos[data[firstIdx+maxLastSecond]].insert(data[firstIdx+maxLastSecond+1]);
+      //   lset_global(firstIdx+maxLastSecond, 1);
+      //   newLCMlen = maxLastSecond - modifiedByteRanges[i].second;
+      //   prefixLen[data[firstIdx+maxLastSecond]][data[firstIdx+maxLastSecond+1]].insert(newLCMlen);
+      // } else {
+      //   maxLastSecond = modifiedByteRanges[i].second;
+      // }
 
-      for (int j = modifiedByteRanges[i].second; j > modifiedByteRanges[i].first; j--) {
-        int suf = j;
-        lcmset(firstIdx+suf, 1);
-        SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
-        tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-        // LCMbuckets.insert(data[firstIdx+suf]);
-        // LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
-        lset_global(firstIdx+suf, 1);
-      }
+      // for (int j = modifiedByteRanges[i].second; j > modifiedByteRanges[i].first; j--) {
+      //   int suf = j;
+      //   lcmset(firstIdx+suf, 1);
+      //   SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
+      //   tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
+      //   // LCMbuckets.insert(data[firstIdx+suf]);
+      //   // LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
+      //   lset_global(firstIdx+suf, 1);
+      //   newLCMlen = (chunkSize-1) - modifiedByteRanges[i].second;
+      //   if (j == modifiedByteRanges[i].second) 
+      //     prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(newLCMlen);
+      //   else
+      //     prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(1);
+      // }
 
-      int suf = modifiedByteRanges[i].first;
+      int suf = modifiedByteRanges[i].second;
       lcmset(firstIdx+suf, 1);
       SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
       tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
       // LCMbuckets.insert(data[firstIdx+suf]);
       // LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
       lset_global(firstIdx+suf, 1);
+      newLCMlen = std::max((chunkSize-1) - modifiedByteRanges[i].second, 1);
+      prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(newLCMlen);
 
-      if (minLastFirst != -1 && minLastFirst < modifiedByteRanges[i].first) {
-        lcmset(firstIdx+minLastFirst, 1);
-        SA[tailsIdx_d[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]]] = firstIdx+minLastFirst;
-        tailsIdx_d[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]]--;
-        // LCMbuckets.insert(data[firstIdx+minLastFirst]);
-        // LCMbucketCombos[data[firstIdx+minLastFirst]].insert(data[firstIdx+minLastFirst+1]);
-        lset_global(firstIdx+minLastFirst, 1);
-      } else {
-        minLastFirst = modifiedByteRanges[i].first;
-      }
+      suf = modifiedByteRanges[i].first;
+      lcmset(firstIdx+suf, 1);
+      SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
+      tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
+      // LCMbuckets.insert(data[firstIdx+suf]);
+      // LCMbucketCombos[data[firstIdx+suf]].insert(data[firstIdx+suf+1]);
+      lset_global(firstIdx+suf, 1);
+      prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(1);
+
+      // if (minLastFirst != -1 && minLastFirst < modifiedByteRanges[i].first) {
+      //   // lcmset(firstIdx+minLastFirst, 1);
+      //   SA[tailsIdx_d[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]]] = firstIdx+minLastFirst;
+      //   tailsIdx_d[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]]--;
+      //   // LCMbuckets.insert(data[firstIdx+minLastFirst]);
+      //   // LCMbucketCombos[data[firstIdx+minLastFirst]].insert(data[firstIdx+minLastFirst+1]);
+      //   lset_global(firstIdx+minLastFirst, 1);
+      //   newLCMlen = modifiedByteRanges[i].first - minLastFirst;
+      //   prefixLen[data[firstIdx+minLastFirst]][data[firstIdx+minLastFirst+1]].insert(newLCMlen);
+      // } else {
+      //   minLastFirst = modifiedByteRanges[i].first;
+      // }
     }
   }
 
@@ -718,13 +751,12 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // This will enable the true detection of positionally relevant suffixes
   for (int i = dataSize; i --> 0;) {
     // 2-byte combos occuring only once provide free relative context
-    __builtin_prefetch(&data[i-PREFETCH_DISTANCE], 0, 3);
-    if (!lcmget(i) && tget_global(i) && !tget_global(i-1) &&  buckets_d[data[i]][data[i+1]] == 1) {
+    if (!lcmget(i) && tget_global(i) && !tget_global(i-1) && buckets_d[data[i]][data[i+1]] == 1) {
       lcmset(i, 1);
       SA[tailsIdx_d[data[i]][data[i+1]]] = i;
       tailsIdx_d[data[i]][data[i+1]]--;
-      LCMbuckets.insert(data[i]);
-      LCMbucketCombos[data[i]].insert(data[i+1]);
+      // LCMbuckets.insert(data[i]);
+      // LCMbucketCombos[data[i]].insert(data[i+1]);
       lset_global(i, 1);
     }
     if (!lcmget(i)
@@ -784,11 +816,38 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   for (int i = 0; i < 256; i++) {
     for (int j = 0; j < 256; j++) {
-      __builtin_prefetch(&data[SA[tailsIdx_d[i][j]+1]], 0, 3);
       if (tails_d[i][j] - tailsIdx_d[i][j] > 1) {
-        std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-          return sA == dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-        });
+        __builtin_prefetch(&data[SA[tailsIdx_d[i][j]+1]], 0, 3);
+        
+        // printf("bucket: %02X %02X\n", i, j);
+        // printf("common prefix lengths: ");
+        // for (int k : prefixLen[i][j]) {
+        //   printf("%d, ", k);
+        // }
+        // printf("\nsuffix count: %d", tails_d[i][j] - tailsIdx_d[i][j]);
+        // printf("\n\n");
+
+        int it = 0;
+        for(int prefLen : prefixLen[i][j]) {
+          // printf("prefLen = %d\n", prefLen);
+          if (i == 0 && j == 0)
+            std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+              return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
+            });
+          else if (it > 0) {
+            std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+              return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+            });
+          } else
+            std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+              return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+            });
+          it++;
+        }
+
+        // std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+        //   return sA == dataSize || memcmp(&data[sA+prefixLen[i][j]], &data[sB+prefixLen[i][j]], dataSize) < 0;
+        // });
       }
     }
   }
@@ -797,50 +856,46 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // I need to reorder the chunk progression based on their relative order at d distance from their origins...
   // Precomputed table for each d value maybe? (DISPROVEN, too slow)
 
-  for (int d = 1; d < dataSize; d++) {
-    if (tget_local(dataSize)) goto after;
-    if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
-    lset_global(dataSize-d, 1);
-    if (d == 1) {
-      SA[headsIdx_d[data[dataSize-d]][0]] = dataSize-d;
-      headsIdx_d[data[dataSize-d]][0]++;
-    } else {
-      SA[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
-      headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
-    }
-  }
+  // for (int d = 1; d < dataSize; d++) {
+  //   if (tget_local(dataSize)) goto after;
+  //   if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
+  //   lset_global(dataSize-d, 1);
+  //   if (d == 1) {
+  //     SA[headsIdx_d[data[dataSize-d]][0]] = dataSize-d;
+  //     headsIdx_d[data[dataSize-d]][0]++;
+  //   } else {
+  //     SA[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
+  //     headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
+  //   }
+  // }
 
-  after:
+  // after:
 
-  for (int i = 0; i < 256; i++) {
-    for (int j = 0; j < 256; j++) {
-      for (int d = 1; d < dataSize; d++) {
-        bool found = false;
-
-        // std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB){
-        //   return data[sA-d] < data[sB-d];
-        // });
-
-        for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
-          if (tget_local(SA[k]) || SA[k]-d < 1) continue;
-          if (d > 0 && lcmget(SA[k]-d)) {tset_local(SA[k], 1); continue;}
-          found = true;
-          lset_global(SA[k]-d, 1);
-          if (d == 1) {
-            SA[headsIdx_d[data[SA[k]-d]][i]] = SA[k]-d;
-            headsIdx_d[data[SA[k]-d]][i]++;
-          } else {
-            SA[headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]] = SA[k]-d;
-            headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]++;
-          }
-        }
-        if (!found) break;
-      }
-      // std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB){
-      //   return sA == dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-      // });
-    }
-  }
+  // for (int i = 0; i < 256; i++) {
+  //   for (int j = 0; j < 256; j++) {
+  //     for (int d = 1; d < dataSize; d++) {
+  //       bool found = false;
+  //       for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
+  //         if (tget_local(SA[k]) || SA[k]-d < 1) continue;
+  //         if (d > 0 && lcmget(SA[k]-d)) {tset_local(SA[k], 1); sortCount[i][j]++; continue;}
+  //         found = true;
+  //         lset_global(SA[k]-d, 1);
+  //         if (d == 1) {
+  //           SA[headsIdx_d[data[SA[k]-d]][i]] = SA[k]-d;
+  //           headsIdx_d[data[SA[k]-d]][i]++;
+  //         } else {
+  //           SA[headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]] = SA[k]-d;
+  //           headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]++;
+  //         }
+  //       }
+  //       if (!found) break;
+  //     }
+  //     // if (sortCount[i][j] > buckets_d[i][j]) printf("doubles somehow\n");
+  //     // std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB){
+  //     //   return sA == dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+  //     // });
+  //   }
+  // }
 
   // MARKER
 
@@ -1046,12 +1101,12 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // std::cout << std::endl;
   // printf("\n");
 
-  // std::cout << "my LMS" << std::endl;
+  std::cout << "my LMS" << std::endl;
   // for (int i = 1; i < dataSize+1; i++) {
-  //   // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
+  //   if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
   //   // if (lcmget(SA[i])) {
   //     std::cout << SA[i] << ", ";
-  //   // }
+  //   }
   // }
   // std::cout << std::endl;
   // printf("\n");
@@ -1063,9 +1118,9 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   // std::cout << "\nValidated LMS order" << std::endl;
   // for (int i = 0; i < dataSize; i++) {
-  //   // if (tget_global(DSS_SA[i]) && !tget_global(DSS_SA[i]-1)) {
+  //   if (tget_global(DSS_SA[i]) && !tget_global(DSS_SA[i]-1)) {
   //     std::cout << DSS_SA[i] << ", ";
-  //   // } 
+  //   } 
   //   // else {
   //   //   std::cout << "-1" << ", ";
   //   // }
