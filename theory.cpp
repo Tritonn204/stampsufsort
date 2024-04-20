@@ -1037,45 +1037,46 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   auto end2 = std::chrono::steady_clock::now();
 
-  // for (int i = 0; i < 256; i++) {
-  //   for (int j = 0; j < 256; j++) {
-  //     if (inductionDepths[i][j] == -2) {
-  //       __builtin_prefetch(&data[SA[heads_d[i][j]]], 0, 3);
-  //       // Sort the double bucket using LCP information
-  //       // int it = 0;
-  //       // for (int prefLen : prefixLen[i][j]) {
-  //       //   if (prefLen == NAIVESORT_CONST) {
-  //       //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-  //       //       return sA+1 >= dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-  //       //     });
-  //       //     break;
-  //       //   } else if (i == 0 && j == 0) {
-  //       //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-  //       //       return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
-  //       //     });
-  //       //   } else if (it > 0) {
-  //       //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-  //       //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
-  //       //     });
-  //       //   } else {
-  //       //     // printf("prefLen = %d\n", prefLen);
-  //       //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-  //       //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
-  //       //     });
-  //       //   }
-  //       //   it++;
-  //       // }
-  //       std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-  //         return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-  //       });
-  //     }
-  //     if (rootBytes[i][j] == -2) {
-  //       std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-  //         return data[sA+2] < data[sB+2];
-  //       });
-  //     }
-  //   }
-  // }
+  // Need to optimize this sort to work with ranked groups. Should be possible
+  for (int i = 0; i < 256; i++) {
+    for (int j = 0; j < 256; j++) {
+      if (inductionDepths[i][j] == -2) {
+        __builtin_prefetch(&data[SA[heads_d[i][j]]], 0, 3);
+        // Sort the double bucket using LCP information
+        // int it = 0;
+        // for (int prefLen : prefixLen[i][j]) {
+        //   if (prefLen == NAIVESORT_CONST) {
+        //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+        //       return sA+1 >= dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+        //     });
+        //     break;
+        //   } else if (i == 0 && j == 0) {
+        //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+        //       return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
+        //     });
+        //   } else if (it > 0) {
+        //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+        //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+        //     });
+        //   } else {
+        //     // printf("prefLen = %d\n", prefLen);
+        //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+        //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+        //     });
+        //   }
+        //   it++;
+        // }
+        std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+          return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+        });
+      }
+      if (rootBytes[i][j] == -2) {
+        std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+          return data[sA+2] < data[sB+2];
+        });
+      }
+    }
+  }
 
   // MARKER
 
