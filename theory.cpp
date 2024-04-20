@@ -633,10 +633,12 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   int* SA = new int[dataSize + 1];
   std::fill_n(SA, dataSize + 1, -1);
+  int LCM[dataSize+1];
+  std::fill_n(LCM, dataSize+1, -1);
   int* induceDepth = new int[dataSize + 1];
   std::fill_n(induceDepth, dataSize + 1, -1);
-  int LMS[dataSize+1];
-  std::fill_n(LMS, dataSize+1, -1);
+
+
   int lmsOffsets[dataSize+1];
   std::fill_n(lmsOffsets, dataSize+1, -1);
 
@@ -669,10 +671,10 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   modifiedByteRanges.push_back(std::make_pair(-1, -1));
   chunkTipOffsets.push_back(0);
 
-  int inductionDepths[256][256];
+  int inductionData[256][256];
   for (int i = 0; i < 256; i++) {
     for (int j = 0; j < 256; j++) {
-      inductionDepths[i][j] = -1;
+      inductionData[i][j] = -1;
     }
   }
 
@@ -783,11 +785,11 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
         lcmset(firstIdx+suf, 1);
         SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
         tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-        lset_global(firstIdx+suf, 1);
+        // lset_global(firstIdx+suf, 1);
         // newLCMlen = std::max((chunkSize-1) - modifiedByteRanges[numCompleteChunks].second, 1);
         // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(newLCMlen);
-        // compLen[firstIdx+suf] = newLCMlen;
-        // prevLCM = firstIdx+suf;
+        compLen[prevLCM] = prevLCM - (firstIdx+suf);
+        prevLCM = firstIdx+suf;
       }
 
       suf = modifiedByteRanges[numCompleteChunks].first;
@@ -795,22 +797,25 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
         lcmset(firstIdx+suf, 1);
         SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
         tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-        lset_global(firstIdx+suf, 1);
+        // lset_global(firstIdx+suf, 1);
         // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(2);
-        // compLen[firstIdx+suf] = 2;
-        // prevLCM = firstIdx+suf;
+        compLen[prevLCM] = prevLCM - (firstIdx+suf);
+        prevLCM = firstIdx+suf;
       }
     }
   }
 
   for (int i = numCompleteChunks; i-- > 0;) {
     int firstIdx = i*chunkSize;
+    __builtin_prefetch(&data[firstIdx+modifiedByteRanges[i].first], 0, 3);
+    if (i > 0)
+      __builtin_prefetch(&data[firstIdx+modifiedByteRanges[i-1].first], 0, 3);
 
     if (i == numCompleteChunks-1 || (modifiedByteRanges[i].second+1 < chunkSize-1 && chunkTipOffsets[i] != -1)) {
       lcmset(firstIdx+chunkSize-1, 1);
       SA[tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]] = firstIdx+chunkSize-1;
       tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]--;
-      lset_global(firstIdx+chunkSize-1, 1);
+      // lset_global(firstIdx+chunkSize-1, 1);
       // if (i == numCompleteChunks-1) {
       //   newLCMlen = std::max(modifiedByteRanges[i+1].first+2, finalChunkSize+2);
       // } else {
@@ -818,66 +823,64 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       // }
       // newLCMlen = prevLCM - (firstIdx+chunkSize-1);
       // prefixLen[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]].insert(newLCMlen);
-      // compLen[firstIdx+chunkSize-1] = newLCMlen;
-      // prevLCM = firstIdx+chunkSize-1;
+      compLen[prevLCM] = prevLCM - (firstIdx+chunkSize-1);
+      prevLCM = firstIdx+chunkSize-1;
     }
     if (modifiedByteRanges[i].first != -1) {
       int suf = modifiedByteRanges[i].second;
       lcmset(firstIdx+suf, 1);
       SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
       tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-      lset_global(firstIdx+suf, 1);
+      // lset_global(firstIdx+suf, 1);
       // newLCMlen = std::max((chunkSize-1) - modifiedByteRanges[i].second, 1);
       // newLCMlen = prevLCM - (firstIdx + suf);
       // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(newLCMlen);
-      // compLen[firstIdx+suf] = newLCMlen;
-      // prevLCM = firstIdx+suf;
+      compLen[prevLCM] = prevLCM - (firstIdx+suf);
+      prevLCM = firstIdx+suf;
 
       suf = modifiedByteRanges[i].first;
       if (suf != modifiedByteRanges[i].second) {
         lcmset(firstIdx+suf, 1);
         SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
         tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
-        lset_global(firstIdx+suf, 1);
+        // lset_global(firstIdx+suf, 1);
         // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(2);
-        // compLen[firstIdx+suf] = 2;
-        // prevLCM = firstIdx+suf;
+        compLen[prevLCM] = prevLCM - (firstIdx+suf);
+        prevLCM = firstIdx+suf;
       }
     }
   }
 
   // All LCM suffix double buckets must be fully populated with non-LCM dupes for accuracy
   // This will enable the true detection of positionally relevant suffixes
-  for (int i = dataSize; i --> 0;) {
-    // 2-byte combos occuring only once provide free relative context
-    if (!lcmget(i) && tget_global(i) && !tget_global(i-1) && buckets_d[data[i]][data[i+1]] == 1) {
-      lcmset(i, 1);
-      SA[tailsIdx_d[data[i]][data[i+1]]] = i;
-      tailsIdx_d[data[i]][data[i+1]]--;
-      // compLen[i] = 2;
-      lset_global(i, 1);
-    }
-    if (!lcmget(i)
-      && tailsIdx_d[data[i]][data[i+1]] != tails_d[data[i]][data[i+1]]
-    ) {
-      lcmset(i, 1);
-      SA[tailsIdx_d[data[i]][data[i+1]]] = i;
-      tailsIdx_d[data[i]][data[i+1]]--;
-      lset_global(i, 1);
-      prefixLen[data[i]][data[i+1]].insert(NAIVESORT_CONST);
-      // compLen[i] = 2;
-    }
-  }
-
-  
+  // for (int i = dataSize; i --> 0;) {
+  //   // 2-byte combos occuring only once provide free relative context
+  //   if (!lcmget(i) && tget_global(i) && !tget_global(i-1) && buckets_d[data[i]][data[i+1]] == 1) {
+  //     lcmset(i, 1);
+  //     SA[tailsIdx_d[data[i]][data[i+1]]] = i;
+  //     tailsIdx_d[data[i]][data[i+1]]--;
+  //     // compLen[i] = 2;
+  //     // lset_global(i, 1);
+  //   }
+  //   if (!lcmget(i)
+  //     && tailsIdx_d[data[i]][data[i+1]] != tails_d[data[i]][data[i+1]]
+  //   ) {
+  //     lcmset(i, 1);
+  //     SA[tailsIdx_d[data[i]][data[i+1]]] = i;
+  //     tailsIdx_d[data[i]][data[i+1]]--;
+  //     // lset_global(i, 1);
+  //     // prefixLen[data[i]][data[i+1]].insert(NAIVESORT_CONST);
+  //     // compLen[i] = 2;
+  //   }
+  // }
 
   SA[0] = dataSize;
-  lset_global(dataSize, 1);
+  // lset_global(dataSize, 1);
 
   for (int i = 0; i < 256; i++) {
     for (int j = 0; j < 256; j++) {
       if (tails_d[i][j] - tailsIdx_d[i][j] > 1) {
-        __builtin_prefetch(&data[SA[tailsIdx_d[i][j]+1]], 0, 3);
+        __builtin_prefetch(&data[LCM[tailsIdx_d[i][j]+1]], 0, 3);
         
         // printf("bucket: %02X %02X\n", i, j);
         // printf("common prefix lengths: ");
@@ -922,97 +925,82 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       }
     }
   }
+  auto end = std::chrono::steady_clock::now();
 
-  // I need to reorder the chunk progression based on their relative order at d distance from their origins...
-  // Precomputed table for each d value maybe? (DISPROVEN, too slow)
+
+  /* 
+  Instead of writing all offsets to all buckets, do this.
+  Within each sorted bucket, record the suffix at said position.
+  Afterwards, move forward within the bucket until the root suffix value or position changes.
+  Once this is found to be the case, count the total suffixes before said change.
+  Then, pack the value into an integer, with the unshifted value being the original suffix,
+  the count being packed << 17, and the position within the bucket being packed << 25.
+  Cascade/copy backward into the head of each prefix position this packed value - distance.
+
+  After this, sort the packed suffix headers lexicographically using data from the stored suffix position.
+  Once this is done, iterate over all buckets, copying the necessary suffix groups in their
+  induced order into the final array (with SIMD if possible), referencing the original bucket positions 
+  and offsets.
+  */
 
   auto start2 = std::chrono::steady_clock::now();
 
+  // The final suffix handling remains unchanged since it has unique/prime sorting priority
+
+  int packedSuf = 0;
   for (int d = 1; d < dataSize; d++) {
-    if (tget_local(dataSize)) goto after;
-    if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
-    lset_global(dataSize-d, 1);
-    if (d == 1) {
-      SA[headsIdx_d[data[dataSize-d]][0]] = dataSize-d;
-      inferenceDist[dataSize-d] = d;
+    if (lcmget(dataSize-d)) break;
+    packedSuf = (dataSize-d) | (1 << 17);
 
-      int& depth = inductionDepths[data[dataSize-d]][0];
-      int& root = rootBytes[data[dataSize-1]][0];
+    LCM[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
+    // inferenceDist[dataSize-d] = d;
 
-      if (depth == -1) {
-        depth = d;
-      } else if (depth != d) {
-        depth = -2;
-      }
+    int& iData = inductionData[data[dataSize-d]][data[dataSize-d+1]];
+    int depth = iData & 0xFFFF;
+    int root = iData >> 16;
 
-      if (root == -1) {
-        root = data[dataSize-1] << 16;
-      } else if (root != data[dataSize-1] << 16) {
-        root = -2;
-      }
-
-      headsIdx_d[data[dataSize-d]][0]++;
-    } else {
-      SA[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
-      inferenceDist[dataSize-d] = d;
-
-      int& depth = inductionDepths[data[dataSize-d]][data[dataSize-d+1]];
-      int& root = rootBytes[data[dataSize-1]][0];
-
-      if (depth == -1) {
-        depth = d;
-        depth = *(uint16_t*)(&data[dataSize-1]);
-      } else if (depth != d) {
-        depth = -2;
-      }
-
-      if (root == -1) {
-        root = data[dataSize-1] << 16;
-      } else if (root != data[dataSize-1] << 16) {
-        root = -2;
-      }
-
-      headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
+    if (depth == -1) {
+      depth = d;
+    } else if (depth != d) {
+      depth = -2;
     }
+
+    if (root == -1) {
+      root = data[dataSize-1] << 16;
+    } else if (root != data[dataSize-1] << 16) {
+      root = -2;
+    }
+
+    iData = depth | (root << 16);
+
+    headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
   }
 
-  after:
+  int lastPos = -1;
+  int lastSlot = -1;
+  int saKey = -1;
+  unsigned char commonCount = 0;
+  int newData;
 
   for (int i = 0; i < 256; i++) {
     for (int j = 0; j < 256; j++) {
-      for (int d = 1; d < dataSize; d++) {
-        bool found = false;
-        for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
-          if (tget_local(SA[k]) || SA[k]-d < 0) continue;
-          if (d > 0 && lcmget(SA[k]-d)) {tset_local(SA[k], 1); sortCount[i][j]++; continue;}
-          found = true;
-          lset_global(SA[k]-d, 1);
-          if (d == 1) {
-            SA[headsIdx_d[data[SA[k]-d]][i]] = SA[k]-d;
-            inferenceDist[SA[k]-d] = d;
+      saKey = SA[tailsIdx_d[i][j]+1];
+      lastPos = saKey%chunkSize;
+      lastSlot = 0;
+      for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
+        if (lastPos != SA[k]%chunkSize || compLen[SA[k]] != compLen[saKey]) {
+          LCM[headsIdx_d[data[saKey]][data[saKey+1]]] = (saKey) | (commonCount << 17) | (lastSlot << 25);
+          // printf("common %d\n", commonCount);
+          for (int d = 1; d < dataSize; d++) {
+            if (saKey-d < 0) break;
+            if (lcmget(saKey-d)) break;
 
-            int& depth = inductionDepths[data[SA[k]-d]][i];
-            int& root = rootBytes[data[SA[k]-d]][i];
+            packedSuf = (saKey-d) | (commonCount << 17) | ((k - heads_d[i][j]) << 25);
+            LCM[headsIdx_d[data[saKey-d]][data[saKey-d+1]]] = packedSuf;
 
-            if (depth == -1) {
-              depth = d;
-            } else if (depth != d) {
-              depth = -2;
-            }
-
-            if (root == -1) {
-              root = (i << 16) | j;
-            } else if (root != data[dataSize-1] << 16) {
-              root = -2;
-            }
-
-            headsIdx_d[data[SA[k]-d]][i]++;
-          } else {
-            SA[headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]] = SA[k]-d;
-            inferenceDist[SA[k]-d] = d;
-
-            int& depth = inductionDepths[data[SA[k]-d]][data[SA[k]-d+1]];
-            int& root = rootBytes[data[SA[k]-d]][data[SA[k]-d+1]];
+            int& iData = inductionData[data[saKey-d]][data[saKey-d+1]];
+            int depth = iData & 0xFFFF;
+            int root = iData >> 16;
 
             if (depth == -1) {
               depth = d;
@@ -1025,58 +1013,167 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
             } else if (root != data[dataSize-1] << 16) {
               root = -2;
             }
-            
-            headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]++;
+
+            iData = depth | (root << 16);
+
+            headsIdx_d[data[saKey-d]][data[saKey-d+1]]++;
           }
+          saKey = SA[k];
+          lastPos = SA[k]%chunkSize;
+          lastSlot = k - heads_d[i][j];
+          commonCount = 0;
         }
-        if (!found) break;
+        commonCount++;
       }
     }
   }
-  
-
   auto end2 = std::chrono::steady_clock::now();
 
+  // OLD METHOD BELOW
+  
+  // for (int d = 1; d < dataSize; d++) {
+  //   if (tget_local(dataSize)) goto after;
+  //   if (d > 0 && lcmget(dataSize-d)) {tset_local(dataSize, 1); goto after;}
+    
+  //   lset_global(dataSize-d, 1);
+  //   LCM[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
+  //   inferenceDist[dataSize-d] = d;
+
+  //   int& depth = inductionData[data[dataSize-d]][data[dataSize-d+1]];
+  //   int& root = rootBytes[data[dataSize-1]][0];
+
+  //   if (depth == -1) {
+  //     depth = d;
+  //     depth = *(uint16_t*)(&data[dataSize-1]);
+  //   } else if (depth != d) {
+  //     depth = -2;
+  //   }
+
+  //   if (root == -1) {
+  //     root = data[dataSize-1] << 16;
+  //   } else if (root != data[dataSize-1] << 16) {
+  //     root = -2;
+  //   }
+
+  //   headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
+  // }
+
+  // after:
+
+  // for (int i = 0; i < 256; i++) {
+  //   for (int j = 0; j < 256; j++) {
+  //     for (int d = 1; d < dataSize; d++) {
+  //       bool found = false;
+  //       for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
+  //         if (tget_local(SA[k]) || SA[k]-d < 0) continue;
+  //         if (d > 0 && lcmget(SA[k]-d)) {tset_local(SA[k], 1); sortCount[i][j]++; continue;}
+  //         found = true;
+  //         lset_global(SA[k]-d, 1);
+  //         if (d == 1) {
+  //           SA[headsIdx_d[data[SA[k]-d]][i]] = SA[k]-d;
+  //           inferenceDist[SA[k]-d] = d;
+
+  //           int& depth = inductionData[data[SA[k]-d]][i];
+  //           int& root = rootBytes[data[SA[k]-d]][i];
+
+  //           if (depth == -1) {
+  //             depth = d;
+  //           } else if (depth != d) {
+  //             depth = -2;
+  //           }
+
+  //           if (root == -1) {
+  //             root = (i << 16) | j;
+  //           } else if (root != data[dataSize-1] << 16) {
+  //             root = -2;
+  //           }
+
+  //           headsIdx_d[data[SA[k]-d]][i]++;
+  //         } else {
+  //           SA[headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]] = SA[k]-d;
+  //           inferenceDist[SA[k]-d] = d;
+
+  //           int& depth = inductionData[data[SA[k]-d]][data[SA[k]-d+1]];
+  //           int& root = rootBytes[data[SA[k]-d]][data[SA[k]-d+1]];
+
+  //           if (depth == -1) {
+  //             depth = d;
+  //           } else if (depth != d) {
+  //             depth = -2;
+  //           }
+
+  //           if (root == -1) {
+  //             root = (i << 16) | j;
+  //           } else if (root != data[dataSize-1] << 16) {
+  //             root = -2;
+  //           }
+            
+  //           headsIdx_d[data[SA[k]-d]][data[SA[k]-d+1]]++;
+  //         }
+  //       }
+  //       if (!found) break;
+  //     }
+  //   }
+  // }
+  
   // Need to optimize this sort to work with ranked groups. Should be possible
   for (int i = 0; i < 256; i++) {
     for (int j = 0; j < 256; j++) {
-      if (inductionDepths[i][j] == -2) {
-        __builtin_prefetch(&data[SA[heads_d[i][j]]], 0, 3);
-        // Sort the double bucket using LCP information
-        // int it = 0;
-        // for (int prefLen : prefixLen[i][j]) {
-        //   if (prefLen == NAIVESORT_CONST) {
-        //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       return sA+1 >= dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-        //     });
-        //     break;
-        //   } else if (i == 0 && j == 0) {
-        //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
-        //     });
-        //   } else if (it > 0) {
-        //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
-        //     });
-        //   } else {
-        //     // printf("prefLen = %d\n", prefLen);
-        //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
-        //     });
-        //   }
-        //   it++;
-        // }
-        std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-          return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-        });
+      if (buckets_d[i][j] == 0) continue;
+      if (headsIdx_d[i][j] - heads_d[i][j] == 0) {
+        if (buckets_d[i][j] == 1) printf("singular token ");
+        printf("oh noooooo! %02X %02X\n", i, j);
       }
-      if (rootBytes[i][j] == -2) {
-        std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-          return data[sA+2] < data[sB+2];
-        });
-      }
+      // if (headsIdx_d[i][j] - heads_d[i][j] > 1) {
+      //   std::sort(&LCM[heads_d[i][j]], &LCM[headsIdx_d[i][j]+1], [&](int sA, int sB) {
+      //     return sA + 2 >= dataSize+1 || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+      //   });
+      // }
     }
   }
+
+  // OLD method below
+
+  // // Need to optimize this sort to work with ranked groups. Should be possible
+  // for (int i = 0; i < 256; i++) {
+  //   for (int j = 0; j < 256; j++) {
+  //     if (inductionData[i][j] == -2) {
+  //       __builtin_prefetch(&data[SA[heads_d[i][j]]], 0, 3);
+  //       // Sort the double bucket using LCP information
+  //       // int it = 0;
+  //       // for (int prefLen : prefixLen[i][j]) {
+  //       //   if (prefLen == NAIVESORT_CONST) {
+  //       //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       return sA+1 >= dataSize || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+  //       //     });
+  //       //     break;
+  //       //   } else if (i == 0 && j == 0) {
+  //       //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
+  //       //     });
+  //       //   } else if (it > 0) {
+  //       //     std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+  //       //     });
+  //       //   } else {
+  //       //     // printf("prefLen = %d\n", prefLen);
+  //       //     std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+  //       //     });
+  //       //   }
+  //       //   it++;
+  //       // }
+  //       std::sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //         return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+  //       });
+  //     }
+  //     if (rootBytes[i][j] == -2) {
+  //       std::stable_sort(&SA[heads_d[i][j]], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //         return data[sA+2] < data[sB+2];
+  //       });
+  //     }
+  //   }
+  // }
 
   // MARKER
 
@@ -1171,7 +1268,6 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   //   } 
   // }
 
-  auto end = std::chrono::steady_clock::now();
   auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start);
 
   auto time2 = std::chrono::duration_cast<std::chrono::nanoseconds>(end2-start2);
@@ -1225,7 +1321,7 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // }
   // printf("\n");
 
-  printf("My Suffix Array took %.6f seconds, induction took %.6f seconds\n", (double)time.count()/1000000000.0, (double)time2.count()/1000000000.0);
+  printf("My Setup took %.6f seconds, LCM induction took %.6f seconds\n", (double)time.count()/1000000000.0, (double)time2.count()/1000000000.0);
 
   // std::cout << "\nModified Byte Offsets:" << std::endl;
   // for (int offset : modifiedByteOffsets) {
@@ -1284,20 +1380,21 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // std::cout << std::endl;
   // printf("\n");
 
-  // std::cout << "my LMS" << std::endl;
-  // for (int i = 1; i < dataSize+1; i++) {
-  //   // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
-  //   // if (lcmget(SA[i])) {
-  //     std::cout << SA[i] << ", ";
-  //   // }
-  // }
-  // std::cout << std::endl;
-  // printf("\n");
+  std::cout << "my packed test" << std::endl;
+  for (int i = 1; i < dataSize+1; i++) {
+    // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
+    // if (lcmget(SA[i])) {
+      if ((LCM[i] & 0b11111111111111111) == (-1 & 0b11111111111111111)) std::cout << "-, ";
+      else std::cout << (int)(LCM[i] & 0b11111111111111111) << ", ";
+    // }
+  }
+  std::cout << std::endl;
+  printf("\n");
 
-  int DSS_SA[dataSize];
-  int bA[256];
-  int bB[256*256];
-  divsufsort(data, DSS_SA, dataSize, bA, bB);
+  // int DSS_SA[dataSize];
+  // int bA[256];
+  // int bB[256*256];
+  // divsufsort(data, DSS_SA, dataSize, bA, bB);
 
   // std::cout << "\nValidated LMS order" << std::endl;
   // for (int i = 0; i < dataSize; i++) {
@@ -1309,26 +1406,26 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   //   // }
   // }
 
-  printf("\n");
-  std::cout << "\nSA inaccuracies" << std::endl;
-  for (int i = 0; i < dataSize; i++) {
-    // if (SA[i+1] != DSS_SA[i]) {
-    //   printf("index: %d, suffix: %d, expected suffix: %d, inferenceDist: %d, in-chunk pos: %d\n", i+1, SA[i+1], DSS_SA[i], inferenceDist[SA[i+1]], SA[i+1]%chunkSize);
-    //   printf("root double bucket: %02X %02X, root in-chunk pos: %d\n", data[SA[i+1]+inferenceDist[SA[i+1]]], data[SA[i+1]+inferenceDist[SA[i+1]]+1], (SA[i+1]+inferenceDist[SA[i+1]])%chunkSize);
-    //   // printf("comp in-chunk: %d, comp spot: %d, comp double bucket %02X %02X\n", compLen[SA[i+1]+inferenceDist[SA[i+1]]]%chunkSize, compLen[SA[i+1]+inferenceDist[SA[i+1]]], data[compLen[SA[i+1]+inferenceDist[SA[i+1]]]], data[compLen[SA[i+1]+inferenceDist[SA[i+1]]]+1]);
-    //   // for (int j = 0; j < compLen[SA[i+1]+inferenceDist[SA[i+1]]]+2; j++) {
-    //   for (int j = 0; j < chunkSize; j++) {
-    //     printf("%02X ", data[SA[i+1]+j]);
-    //   }
-    //   printf("\n\n");
-    // }
-    if (SA[i+1] != DSS_SA[i]) {
-      std::cout << SA[i+1]%chunkSize << ", ";
-    } else {
-      std::cout << "-" << ", ";
-    }
-  }
-  std::cout << std::endl;
+  // printf("\n");
+  // std::cout << "\nSA inaccuracies" << std::endl;
+  // for (int i = 0; i < dataSize; i++) {
+  //   // if (SA[i+1] != DSS_SA[i]) {
+  //   //   printf("index: %d, suffix: %d, expected suffix: %d, inferenceDist: %d, in-chunk pos: %d\n", i+1, SA[i+1], DSS_SA[i], inferenceDist[SA[i+1]], SA[i+1]%chunkSize);
+  //   //   printf("root double bucket: %02X %02X, root in-chunk pos: %d\n", data[SA[i+1]+inferenceDist[SA[i+1]]], data[SA[i+1]+inferenceDist[SA[i+1]]+1], (SA[i+1]+inferenceDist[SA[i+1]])%chunkSize);
+  //   //   // printf("comp in-chunk: %d, comp spot: %d, comp double bucket %02X %02X\n", compLen[SA[i+1]+inferenceDist[SA[i+1]]]%chunkSize, compLen[SA[i+1]+inferenceDist[SA[i+1]]], data[compLen[SA[i+1]+inferenceDist[SA[i+1]]]], data[compLen[SA[i+1]+inferenceDist[SA[i+1]]]+1]);
+  //   //   // for (int j = 0; j < compLen[SA[i+1]+inferenceDist[SA[i+1]]]+2; j++) {
+  //   //   for (int j = 0; j < chunkSize; j++) {
+  //   //     printf("%02X ", data[SA[i+1]+j]);
+  //   //   }
+  //   //   printf("\n\n");
+  //   // }
+  //   if (SA[i+1] != DSS_SA[i]) {
+  //     std::cout << SA[i+1]%chunkSize << ", ";
+  //   } else {
+  //     std::cout << "-" << ", ";
+  //   }
+  // }
+  // std::cout << std::endl;
 }
 
 void genData(unsigned char *dest, int len, int chunkSize, int maxMod) {
