@@ -94,29 +94,83 @@ int cmp(unsigned char x, unsigned char y){
 //   _mm_sfence();
 // }
 
-void fastMemcpy(void *pvDest, void *pvSrc, size_t nBytes) {
-  assert((intptr_t(pvDest) & 31) == 0);
-  assert((intptr_t(pvSrc) & 31) == 0);
-  const __m256i *pSrc = reinterpret_cast<const __m256i*>(pvSrc);
-  __m256i *pDest = reinterpret_cast<__m256i*>(pvDest);
-  
-  // Copy 32-byte vectors
-  size_t nVects = nBytes / sizeof(*pSrc);
-  for (; nVects > 0; nVects--, pSrc++, pDest++) {
-    const __m256i loaded = _mm256_stream_load_si256(pSrc);
-    _mm256_stream_si256(pDest, loaded);
-  }
-  
-  // Copy remaining bytes using masked operations
-  size_t remainingBytes = nBytes % sizeof(*pSrc);
-  if (remainingBytes > 0) {
-    const __m256i loaded = _mm256_stream_load_si256(pSrc);
-    __m256i mask = _mm256_loadu_si256((__m256i*)((char*)pSrc + remainingBytes - 32));
-    _mm256_maskstore_epi64((long long int*)pDest, mask, loaded);
-  }
-  
-  _mm_sfence();
+// Function to sort an array using
+// insertion sort
+template<typename F>
+void insertionSufSort32(int arr[], int n, F &&lambda)
+{
+    int i, key, j;
+    for (i = 1; i < n; i++) {
+        key = arr[i];
+        j = i - 1;
+
+        // Move elements of arr[0..i-1],
+        // that are greater than key, 
+        // to one position ahead of their
+        // current position
+        while (j >= 0 && lambda(arr[j], key) > 0) {
+            arr[j + 1] = arr[j];
+            j = j - 1;
+        }
+        arr[j + 1] = key;
+    }
 }
+
+template<typename F>
+void insertionSufSort(uint64_t arr[], int n, F &&lambda)
+{
+    int i, key, j;
+    for (i = 1; i < n; i++) {
+        key = arr[i];
+        j = i - 1;
+
+        // Move elements of arr[0..i-1],
+        // that are greater than key, 
+        // to one position ahead of their
+        // current position
+        while (j >= 0 && lambda(arr[j], key) > 0) {
+            arr[j + 1] = arr[j];
+            j = j - 1;
+        }
+        arr[j + 1] = key;
+    }
+}
+
+// void fastMemcpy(void *pvDest, void *pvSrc, size_t nBytes) {
+//   const __m256i *pSrc = reinterpret_cast<const __m256i*>(pvSrc);
+//   __m256i *pDest = reinterpret_cast<__m256i*>(pvDest);
+  
+//   // Copy 32-byte vectors
+//   size_t nVects = nBytes / sizeof(*pSrc);
+//   for (; nVects > 0; nVects--, pSrc++, pDest++) {
+//     const __m256i loaded = _mm256_loadu_si256(pSrc);
+//     _mm256_storeu_si256(pDest, loaded);
+//   }
+  
+//   // Handle remaining bytes
+//   const int *remainingSrc = reinterpret_cast<const int*>(pSrc);
+//   int *remainingDest = reinterpret_cast<int*>(pDest);
+//   size_t remainingBytes = nBytes % sizeof(*pSrc);
+//   size_t remainingInts = remainingBytes / sizeof(int);
+  
+//   if (remainingInts > 0) {
+//     // Create a mask for the remaining integers
+//     const int mask[8] = {
+//       (remainingInts > 0) ? -1 : 0,
+//       (remainingInts > 1) ? -1 : 0,
+//       (remainingInts > 2) ? -1 : 0,
+//       (remainingInts > 3) ? -1 : 0,
+//       (remainingInts > 4) ? -1 : 0,
+//       (remainingInts > 5) ? -1 : 0,
+//       (remainingInts > 6) ? -1 : 0,
+//       (remainingInts > 7) ? -1 : 0
+//     };
+    
+//     const __m256i maskVec = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(mask));
+//     const __m256i loaded = _mm256_maskload_epi32(remainingSrc, maskVec);
+//     _mm256_maskstore_epi32(remainingDest, maskVec, loaded);
+//   }
+// }
 
 // Function to get the largest element from an array
 int getMax(int array[], int n) {
@@ -609,12 +663,14 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   int* headsIdx = new int[256]();
   int* tailsIdx = new int[256]();
 
+  unsigned char *zeroDist = new unsigned char[dataSize+1]();
+
   int (*buckets_d)[256] = new int[256][256]();
   int (*heads_d)[256] = new int[256][256]();
   int (*tails_d)[256] = new int[256][256]();
   int (*headsIdx_d)[256] = new int[256][256]();
   int (*tailsIdx_d)[256] = new int[256][256]();
-  int (*sortCount)[256] = new int[256][256]();
+  
 
   std::vector<std::vector<std::set<int, std::greater<int>>>> prefixLen(256, std::vector<std::set<int, std::greater<int>>>(256));
 
@@ -633,19 +689,20 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   int* SA = new int[dataSize + 1];
   std::fill_n(SA, dataSize + 1, -1);
-  int LCM[dataSize+1];
+  uint64_t LCM[dataSize+1];
   std::fill_n(LCM, dataSize+1, -1);
-  int* induceDepth = new int[dataSize + 1];
-  std::fill_n(induceDepth, dataSize + 1, -1);
-
+  int* finalSA = new int[dataSize + 1];
+  std::fill_n(finalSA, dataSize + 1, -1);
+  int* packedBucketHeadIndexes = new int[dataSize + 1];
+  std::fill_n(packedBucketHeadIndexes, dataSize + 1, -1);
+  unsigned char* packedBucketHeadOffsets = new unsigned char[dataSize + 1];
+  std::fill_n(packedBucketHeadOffsets, dataSize + 1, 0);
 
   int lmsOffsets[dataSize+1];
   std::fill_n(lmsOffsets, dataSize+1, -1);
 
   int LCMlen[dataSize+1];
   std::fill_n(LCMlen, dataSize+1, -1);
-
-  int maxOffset = 0;
   // std::vector<int> LCMledger;
 
   // std::vector<int> T;
@@ -788,18 +845,26 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
         // lset_global(firstIdx+suf, 1);
         // newLCMlen = std::max((chunkSize-1) - modifiedByteRanges[numCompleteChunks].second, 1);
         // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(newLCMlen);
-        compLen[prevLCM] = prevLCM - (firstIdx+suf);
+        compLen[prevLCM] = prevLCM - (firstIdx+suf) + 2;
         prevLCM = firstIdx+suf;
+
+      //   // Place all newly modified bytes between first & second directly into LCM array
+      //   // These will be sorted alongside the rest of the data in the second/reduction sort process
+      //   for (int j = modifiedByteRanges[numCompleteChunks].second-1; j > modifiedByteRanges[numCompleteChunks].first-2; j--) {
+      //     lcmset(firstIdx+j, 1);
+      //     LCM[headsIdx_d[data[firstIdx+j]][data[firstIdx+j+1]]] = firstIdx+j | (1 << 17);
+      //     headsIdx_d[data[firstIdx+j]][data[firstIdx+j+1]]++;
+      //   }
       }
 
-      suf = modifiedByteRanges[numCompleteChunks].first;
-      if (suf != modifiedByteRanges[numCompleteChunks].second && firstIdx + suf < dataSize) {
+      suf = modifiedByteRanges[numCompleteChunks].first-2;
+      if (firstIdx + suf < dataSize) {
         lcmset(firstIdx+suf, 1);
         SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
         tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
         // lset_global(firstIdx+suf, 1);
         // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(2);
-        compLen[prevLCM] = prevLCM - (firstIdx+suf);
+        compLen[prevLCM] = prevLCM - (firstIdx+suf) + 2;
         prevLCM = firstIdx+suf;
       }
     }
@@ -807,14 +872,15 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   for (int i = numCompleteChunks; i-- > 0;) {
     int firstIdx = i*chunkSize;
-    __builtin_prefetch(&data[firstIdx+modifiedByteRanges[i].first], 0, 3);
+    // __builtin_prefetch(&data[firstIdx+modifiedByteRanges[i].first], 0, 3);
     if (i > 0)
       __builtin_prefetch(&data[firstIdx+modifiedByteRanges[i-1].first], 0, 3);
 
     if (i == numCompleteChunks-1 || (modifiedByteRanges[i].second+1 < chunkSize-1 && chunkTipOffsets[i] != -1)) {
-      lcmset(firstIdx+chunkSize-1, 1);
-      SA[tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]] = firstIdx+chunkSize-1;
-      tailsIdx_d[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]]--;
+      int suf = chunkSize-3;
+      lcmset(firstIdx+suf, 1);
+      SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
+      tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
       // lset_global(firstIdx+chunkSize-1, 1);
       // if (i == numCompleteChunks-1) {
       //   newLCMlen = std::max(modifiedByteRanges[i+1].first+2, finalChunkSize+2);
@@ -823,8 +889,8 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       // }
       // newLCMlen = prevLCM - (firstIdx+chunkSize-1);
       // prefixLen[data[firstIdx+chunkSize-1]][data[firstIdx+chunkSize]].insert(newLCMlen);
-      compLen[prevLCM] = prevLCM - (firstIdx+chunkSize-1);
-      prevLCM = firstIdx+chunkSize-1;
+      compLen[prevLCM] = prevLCM - (firstIdx+suf) + 2;
+      prevLCM = firstIdx+suf;
     }
     if (modifiedByteRanges[i].first != -1) {
       int suf = modifiedByteRanges[i].second;
@@ -835,98 +901,319 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
       // newLCMlen = std::max((chunkSize-1) - modifiedByteRanges[i].second, 1);
       // newLCMlen = prevLCM - (firstIdx + suf);
       // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(newLCMlen);
-      compLen[prevLCM] = prevLCM - (firstIdx+suf);
+      compLen[prevLCM] = prevLCM - (firstIdx+suf) + 2;
       prevLCM = firstIdx+suf;
 
-      suf = modifiedByteRanges[i].first;
-      if (suf != modifiedByteRanges[i].second) {
+      // // Place all newly modified bytes between first & second directly into LCM array
+      // // These will be sorted alongside the rest of the data in the second/reduction sort process
+      // for (int j = modifiedByteRanges[numCompleteChunks].second-1; j > modifiedByteRanges[numCompleteChunks].first-2; j--) {
+      //   lcmset(firstIdx+j, 1);
+      //   LCM[headsIdx_d[data[firstIdx+j]][data[firstIdx+j+1]]] = firstIdx+j | (1 << 17);
+      //   headsIdx_d[data[firstIdx+j]][data[firstIdx+j+1]]++;
+      // }
+
+      suf = modifiedByteRanges[i].first-2;
+      if (true) {
         lcmset(firstIdx+suf, 1);
         SA[tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]] = firstIdx+suf;
         tailsIdx_d[data[firstIdx+suf]][data[firstIdx+suf+1]]--;
         // lset_global(firstIdx+suf, 1);
         // prefixLen[data[firstIdx+suf]][data[firstIdx+suf+1]].insert(2);
-        compLen[prevLCM] = prevLCM - (firstIdx+suf);
+        compLen[prevLCM] = prevLCM - (firstIdx+suf) + 2;
         prevLCM = firstIdx+suf;
       }
+    }
+  }
+  
+  // Pack the LCM suffixes at the beginning of SA to improve cache friendliness
+  // Consider also packing the start indexes of each group at the end of SA
+
+  SA[0] = dataSize;
+
+  int packedTailIdx = dataSize+1;
+  int packedHeadIdx = 1;
+  for (int i = 0; i < 256; i++) {
+    if (buckets[i] == 0) continue;
+    for (int j = 0; j < 256; j++) {
+      int groupLen = tails_d[i][j] - tailsIdx_d[i][j];
+      if (groupLen == 0) continue;
+      // for (int k = 0; k < groupLen; k++) {
+      //   printf("%d, ", SA[tailsIdx_d[i][j]+1+k]);
+      // }
+      // printf("\n");
+      std::copy(&SA[tailsIdx_d[i][j]]+1, &SA[tails_d[i][j]]+1, SA+packedHeadIdx);
+      finalSA[packedTailIdx] = groupLen;
+      packedTailIdx--;
+      packedHeadIdx += groupLen;
     }
   }
 
   // All LCM suffix double buckets must be fully populated with non-LCM dupes for accuracy
   // This will enable the true detection of positionally relevant suffixes
   // for (int i = dataSize; i --> 0;) {
-  //   // 2-byte combos occuring only once provide free relative context
-  //   if (!lcmget(i) && tget_global(i) && !tget_global(i-1) && buckets_d[data[i]][data[i+1]] == 1) {
-  //     lcmset(i, 1);
-  //     SA[tailsIdx_d[data[i]][data[i+1]]] = i;
-  //     tailsIdx_d[data[i]][data[i+1]]--;
-  //     // compLen[i] = 2;
-  //     // lset_global(i, 1);
-  //   }
-  //   if (!lcmget(i)
-  //     && tailsIdx_d[data[i]][data[i+1]] != tails_d[data[i]][data[i+1]]
-  //   ) {
-  //     lcmset(i, 1);
-  //     SA[tailsIdx_d[data[i]][data[i+1]]] = i;
-  //     tailsIdx_d[data[i]][data[i+1]]--;
-  //     // lset_global(i, 1);
-  //     // prefixLen[data[i]][data[i+1]].insert(NAIVESORT_CONST);
-  //     // compLen[i] = 2;
+    // // 2-byte combos occuring only once provide free relative context
+    // if (!lcmget(i) && tget_global(i) && !tget_global(i-1) && buckets_d[data[i]][data[i+1]] == 1) {
+    //   lcmset(i, 1);
+    //   SA[tailsIdx_d[data[i]][data[i+1]]] = i;
+    //   tailsIdx_d[data[i]][data[i+1]]--;
+    //   // compLen[i] = 2;
+    //   // lset_global(i, 1);
+    // }
+    // if (!lcmget(i)
+    //   && tailsIdx_d[data[i]][data[i+1]] != tails_d[data[i]][data[i+1]]
+    // ) {
+    //   lcmset(i, 1);
+    //   SA[tailsIdx_d[data[i]][data[i+1]]] = i;
+    //   tailsIdx_d[data[i]][data[i+1]]--;
+    //   // lset_global(i, 1);
+    //   // prefixLen[data[i]][data[i+1]].insert(NAIVESORT_CONST);
+    //   // compLen[i] = 2;
+    // }
+  // }
+
+  // for (int i = 0; i < packedHeadIdx; i++) {
+  //   printf("%d, ", SA[i]);
+  // }
+  // printf("\n");
+
+  // return;
+
+  // lset_global(dataSize, 1);
+
+  int packedSuf = 0;
+  __builtin_prefetch(&data[dataSize-compLen[dataSize]], 0, 3);
+  LCM[0] = dataSize;
+  for (int d = 1; d < dataSize; d++) {
+    if (lcmget(dataSize-d)) break;
+    packedSuf = 0 |(dataSize-d) | (1 << 17);
+
+    LCM[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = packedSuf;
+
+    headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
+  }
+
+  int lastPos = -1;
+  int lastSlot = -1;
+  int saKey = -1;
+  unsigned char commonCount = 0;
+  int newData;
+  
+  int rootSortCount = 0;
+  int currentIdx = 1;
+
+  for (int i = dataSize+1; i > packedTailIdx; i--) {
+    // printf("currentIdx: %d\n", currentIdx);
+    // for (int j = 0; j < SA[i]; j++) {
+    //   printf("%d, ", SA[currentIdx+j]);
+    // }
+    // printf("\n");
+    if (finalSA[i] == 1) goto induction;
+    if (SA[currentIdx] + 16 < dataSize) __builtin_prefetch(&SA[currentIdx]+16, 0, 3);
+
+    insertionSufSort32(&SA[currentIdx], finalSA[i], [&](int sA, int sB) {
+      if (sA+2 >= dataSize || sB+2 >= dataSize) {
+        return sA < sB ? -1 : 1;
+      }
+      int r = memcmp(&data[sA+2], &data[sB+2], std::min(dataSize-sA, dataSize-sB));
+      if (r == 0) return sA < sB ? -1 : 1;
+      return r;
+    });
+
+    // insertionSufSort(&SA[currentIdx], finalSA[i], [&](int sA, int sB) {
+    //   if (sA+2 >= dataSize || sB+2 >= dataSize) {
+    //     return sA < sB ? -1 : 1;
+    //   }
+    //   int r = memcmp(&data[sA+2], &data[sB+2], std::min(dataSize-sA, dataSize-sB));
+    //   if (r == 0) return sA < sB ? -1 : 1;
+    //   return r;
+    // });
+
+    rootSortCount++;
+
+    induction:
+
+    saKey = SA[currentIdx];
+    lastPos = saKey%chunkSize;
+    lastSlot = 0;
+    commonCount = 1;
+
+    for (int k = currentIdx+1; k <= currentIdx+finalSA[i]; k++) {
+      if (k > currentIdx+finalSA[i] || lastPos != SA[k]%chunkSize || compLen[SA[k]] != compLen[saKey]) {
+        // __builtin_prefetch(&data[saKey-compLen[saKey]], 0, 3);
+
+        LCM[headsIdx_d[data[saKey]][data[saKey+1]]] = (saKey) | ((uint64_t)commonCount << 17) | ((uint64_t)lastSlot << 25) | ((uint64_t)currentIdx << 33);
+        // packedBucketHeadIndexes[saKey] = currentIdx;
+        headsIdx_d[data[saKey]][data[saKey+1]]++;
+        // printf("common %d, bucket count: %d\n", commonCount, finalSA[i]);
+        for (uint64_t d = 1; d < dataSize; d++) {
+          if (d > saKey) break;
+          if (lcmget(saKey-d)) break;
+
+          packedSuf = (saKey-d) | ((uint64_t)commonCount << 17) | ((uint64_t)(k - currentIdx) << 25) | ((uint64_t)currentIdx << 33) | (d << 41);
+          LCM[headsIdx_d[data[saKey-d]][data[saKey-d+1]]] = packedSuf;
+          // packedBucketHeadIndexes[saKey-d] = currentIdx;
+          // packedBucketHeadOffsets[saKey-d] = d;
+          // packedBucketHeadIndexes[(unsigned char)(unsigned char(data[saKey-d]) << 8 | data[saKey-d+1])] = packedHeadIdx;
+          headsIdx_d[data[saKey-d]][data[saKey-d+1]]++;
+        }
+        saKey = SA[k];
+        lastPos = SA[k]%chunkSize;
+        lastSlot = k - currentIdx;
+        commonCount = 0;
+      }
+      commonCount++;
+    }
+    currentIdx += finalSA[i];
+  }
+
+  // Re-pack the reduced/compressed suffix array for sorting
+  packedTailIdx = dataSize+1;
+  packedHeadIdx = 1;
+  for (int i = 0; i < 256; i++) {
+    if (buckets[i] == 0) continue;
+    for (int j = 0; j < 256; j++) {
+      int groupLen = headsIdx_d[i][j] - heads_d[i][j];
+      if (groupLen == 0) continue;
+      // for (int k = 0; k < groupLen; k++) {
+      //   printf("%d, ", SA[tailsIdx_d[i][j]+1+k]);
+      // }
+      // printf("\n");
+      std::copy(&LCM[heads_d[i][j]], &LCM[headsIdx_d[i][j]], LCM+packedHeadIdx);
+      finalSA[packedTailIdx] = groupLen;
+      packedTailIdx--;
+      packedHeadIdx += groupLen;
+    }
+  }
+
+  // for (int i = 0; i < 256; i++) {
+  //   if (buckets[i] == 0) continue;
+  //   for (int j = 0; j < 256; j++) {
+  //     if (buckets_d[i][j] == 0) continue;
+  //     saKey = SA[tailsIdx_d[i][j]+1];
+  //     lastPos = saKey%chunkSize;
+  //     lastSlot = 0;
+  //     commonCount = 1;
+  //     for (int k = tailsIdx_d[i][j]+2; k <= tails_d[i][j]+1; k++) {
+  //       if (k > tails_d[i][j] || lastPos != SA[k]%chunkSize || compLen[SA[k]] != compLen[saKey]) {
+  //         __builtin_prefetch(&data[saKey-compLen[saKey]], 0, 3);
+  //         if (saKey == SA[tailsIdx_d[i][j]+1]) {
+  //           LCM[headsIdx_d[data[saKey]][data[saKey+1]]] = (saKey) | (commonCount << 17) | (lastSlot << 25);
+  //           rootHead[saKey] = heads_d[data[saKey]][data[saKey+1]];
+  //           headsIdx_d[data[saKey]][data[saKey+1]]++;
+  //         }
+  //         // printf("common %d, bucket count: %d\n", commonCount, tails_d[i][j] - tailsIdx_d[i][j]);
+  //         for (int d = 1; d < dataSize; d++) {
+  //           if (saKey-d < 0) break;
+  //           if (lcmget(saKey-d)) break;
+
+  //           packedSuf = (saKey-d) | (commonCount << 17) | ((k - heads_d[i][j]) << 25);
+  //           LCM[headsIdx_d[data[saKey-d]][data[saKey-d+1]]] = packedSuf;
+  //           rootHead[saKey-d] = heads_d[data[saKey]][data[saKey+1]];
+
+  //           headsIdx_d[data[saKey-d]][data[saKey-d+1]]++;
+  //         }
+  //         saKey = SA[k];
+  //         lastPos = SA[k]%chunkSize;
+  //         lastSlot = k - heads_d[i][j];
+  //         commonCount = 0;
+  //       }
+  //       commonCount++;
+  //     }
   //   }
   // }
 
-  SA[0] = dataSize;
-  // lset_global(dataSize, 1);
+  // for (int i = 0; i < 256; i++) {
+  //   if (buckets[i] == 0) continue;
+  //   for (int j = 0; j < 256; j++) {
+  //     if (buckets_d[i][j] == 0) continue;
+  //     saKey = SA[tailsIdx_d[i][j]+1];
+  //     lastPos = saKey%chunkSize;
+  //     lastSlot = 0;
+  //     commonCount = 1;
+  //     for (int k = tailsIdx_d[i][j]+2; k <= tails_d[i][j]+1; k++) {
+  //       if (k > tails_d[i][j] || lastPos != SA[k]%chunkSize || compLen[SA[k]] != compLen[saKey]) {
+  //         __builtin_prefetch(&data[saKey-compLen[saKey]], 0, 3);
+  //         if (saKey == SA[tailsIdx_d[i][j]+1]) {
+  //           LCM[headsIdx_d[data[saKey]][data[saKey+1]]] = (saKey) | (commonCount << 17) | (lastSlot << 25);
+  //           rootHead[saKey] = heads_d[data[saKey]][data[saKey+1]];
+  //           headsIdx_d[data[saKey]][data[saKey+1]]++;
+  //         }
+  //         // printf("common %d, bucket count: %d\n", commonCount, tails_d[i][j] - tailsIdx_d[i][j]);
+  //         for (int d = 1; d < dataSize; d++) {
+  //           if (saKey-d < 0) break;
+  //           if (lcmget(saKey-d)) break;
 
-  for (int i = 0; i < 256; i++) {
-    for (int j = 0; j < 256; j++) {
-      if (tails_d[i][j] - tailsIdx_d[i][j] > 1) {
-        __builtin_prefetch(&data[LCM[tailsIdx_d[i][j]+1]], 0, 3);
+  //           packedSuf = (saKey-d) | (commonCount << 17) | ((k - heads_d[i][j]) << 25);
+  //           LCM[headsIdx_d[data[saKey-d]][data[saKey-d+1]]] = packedSuf;
+  //           rootHead[saKey-d] = heads_d[data[saKey]][data[saKey+1]];
+
+  //           headsIdx_d[data[saKey-d]][data[saKey-d+1]]++;
+  //         }
+  //         saKey = SA[k];
+  //         lastPos = SA[k]%chunkSize;
+  //         lastSlot = k - heads_d[i][j];
+  //         commonCount = 0;
+  //       }
+  //       commonCount++;
+  //     }
+  //   }
+  // }
+
+  // for (int i = 0; i < 256; i++) {
+  //   if (buckets[i] == 0) continue;
+  //   for (int j = 0; j < 256; j++) {
+  //     if (buckets_d[i][j] == 0) continue;
+  //     if (tails_d[i][j] - tailsIdx_d[i][j] > 1) {
+  //       __builtin_prefetch(&data[LCM[tailsIdx_d[i][j]+1]], 0, 3);
         
-        // printf("bucket: %02X %02X\n", i, j);
-        // printf("common prefix lengths: ");
-        // for (int k : prefixLen[i][j]) {
-        //   printf("%d, ", k);
-        // }
-        // printf("\nsuffix count: %d", tails_d[i][j] - tailsIdx_d[i][j]);
-        // printf("\n\n");
+  //       // printf("bucket: %02X %02X\n", i, j);
+  //       // printf("common prefix lengths: ");
+  //       // for (int k : prefixLen[i][j]) {
+  //       //   printf("%d, ", k);
+  //       // }
+  //       // printf("\nsuffix count: %d", tails_d[i][j] - tailsIdx_d[i][j]);
+  //       // printf("\n\n");
 
-        // int it = 0;
-        // for(int prefLen : prefixLen[i][j]) {
-        //   if (prefLen == NAIVESORT_CONST) {
-        //     std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-        //     });
-        //     break;
-        //   } else if (i == 0 && j == 0)
-        //     std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       if (compLen[sA] != prefLen) return false;
-        //       if (compLen[sB] != prefLen) return true;
-        //       return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
-        //     });
-        //   else if (it > 0) {
-        //     std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       if (compLen[sA] != prefLen) return false;
-        //       if (compLen[sB] != prefLen) return true;
-        //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
-        //     });
-        //   } else {
-        //     std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-        //       if (compLen[sA] != prefLen) return false;
-        //       if (compLen[sB] != prefLen) return true;
-        //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
-        //     });
-        //   }
-        //   it++;
-        // }
+  //       // int it = 0;
+  //       // for(int prefLen : prefixLen[i][j]) {
+  //       //   if (prefLen == NAIVESORT_CONST) {
+  //       //     std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+  //       //     });
+  //       //     break;
+  //       //   } else if (i == 0 && j == 0)
+  //       //     std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       if (compLen[sA] != prefLen) return false;
+  //       //       if (compLen[sB] != prefLen) return true;
+  //       //       return sA + prefLen >= dataSize || memcmp(&data[sA+prefLen], &data[sB+prefLen], dataSize) < 0;
+  //       //     });
+  //       //   else if (it > 0) {
+  //       //     std::stable_sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       if (compLen[sA] != prefLen) return false;
+  //       //       if (compLen[sB] != prefLen) return true;
+  //       //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+  //       //     });
+  //       //   } else {
+  //       //     std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
+  //       //       if (compLen[sA] != prefLen) return false;
+  //       //       if (compLen[sB] != prefLen) return true;
+  //       //       return sA + prefLen >= dataSize || data[sA+prefLen] < data[sB+prefLen];
+  //       //     });
+  //       //   }
+  //       //   it++;
+  //       // }
 
-        std::sort(&SA[tailsIdx_d[i][j]+1], &SA[tails_d[i][j]+1], [&](int sA, int sB) {
-          return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-        });
-      }
-    }
-  }
+
+  //       int cp = 0;
+  //       std::sort(&SA[tailsIdx_d[i][j]]+1, &SA[tails_d[i][j]]+1, [&](int sA, int sB) {
+  //         return memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+  //         // cp = std::min(compLen[sA], compLen[sB]);
+  //         // return data[sA+cp] < data[sB+cp];
+  //       });
+  //     }
+  //   }
+  // }
   auto end = std::chrono::steady_clock::now();
-
 
   /* 
   Instead of writing all offsets to all buckets, do this.
@@ -945,89 +1232,27 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   auto start2 = std::chrono::steady_clock::now();
 
-  // The final suffix handling remains unchanged since it has unique/prime sorting priority
-
-  int packedSuf = 0;
-  for (int d = 1; d < dataSize; d++) {
-    if (lcmget(dataSize-d)) break;
-    packedSuf = (dataSize-d) | (1 << 17);
-
-    LCM[headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]] = dataSize-d;
-    // inferenceDist[dataSize-d] = d;
-
-    int& iData = inductionData[data[dataSize-d]][data[dataSize-d+1]];
-    int depth = iData & 0xFFFF;
-    int root = iData >> 16;
-
-    if (depth == -1) {
-      depth = d;
-    } else if (depth != d) {
-      depth = -2;
-    }
-
-    if (root == -1) {
-      root = data[dataSize-1] << 16;
-    } else if (root != data[dataSize-1] << 16) {
-      root = -2;
-    }
-
-    iData = depth | (root << 16);
-
-    headsIdx_d[data[dataSize-d]][data[dataSize-d+1]]++;
-  }
-
-  int lastPos = -1;
-  int lastSlot = -1;
-  int saKey = -1;
-  unsigned char commonCount = 0;
-  int newData;
-
-  for (int i = 0; i < 256; i++) {
-    for (int j = 0; j < 256; j++) {
-      saKey = SA[tailsIdx_d[i][j]+1];
-      lastPos = saKey%chunkSize;
-      lastSlot = 0;
-      for (int k = tailsIdx_d[i][j]+1; k < tails_d[i][j]+1; k++) {
-        if (lastPos != SA[k]%chunkSize || compLen[SA[k]] != compLen[saKey]) {
-          LCM[headsIdx_d[data[saKey]][data[saKey+1]]] = (saKey) | (commonCount << 17) | (lastSlot << 25);
-          // printf("common %d\n", commonCount);
-          for (int d = 1; d < dataSize; d++) {
-            if (saKey-d < 0) break;
-            if (lcmget(saKey-d)) break;
-
-            packedSuf = (saKey-d) | (commonCount << 17) | ((k - heads_d[i][j]) << 25);
-            LCM[headsIdx_d[data[saKey-d]][data[saKey-d+1]]] = packedSuf;
-
-            int& iData = inductionData[data[saKey-d]][data[saKey-d+1]];
-            int depth = iData & 0xFFFF;
-            int root = iData >> 16;
-
-            if (depth == -1) {
-              depth = d;
-            } else if (depth != d) {
-              depth = -2;
-            }
-
-            if (root == -1) {
-              root = (i << 16) | j;
-            } else if (root != data[dataSize-1] << 16) {
-              root = -2;
-            }
-
-            iData = depth | (root << 16);
-
-            headsIdx_d[data[saKey-d]][data[saKey-d+1]]++;
-          }
-          saKey = SA[k];
-          lastPos = SA[k]%chunkSize;
-          lastSlot = k - heads_d[i][j];
-          commonCount = 0;
-        }
-        commonCount++;
-      }
-    }
-  }
   auto end2 = std::chrono::steady_clock::now();
+
+  auto time4 = std::chrono::duration_cast<std::chrono::nanoseconds>(end-start);
+
+  // // std::cout << "my packed test" << std::endl;
+  // for (int i = 1; i < dataSize+1; i++) {
+  //   // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
+  //   // if (lcmget(SA[i])) {
+  //     if ((LCM[i] & 0x1FFFF) == (-1 & 0x1FFFF)) std::cout << "-, ";
+  //     else std::cout << (int)(LCM[i] & 0x1FFFF) 
+  //     // Line below prints suffix reduction info
+  //     << "/" << (int)((LCM[i] >> 17) & 0xFF) << "->" <<  (int)((LCM[i] >> 25) & 0xFF) 
+  //     << ", ";
+  //   // }
+  // }
+  // std::cout << std::endl;
+  // printf("\n");
+
+  // printf("My Setup took %.6f seconds\n", (double)time4.count()/1000000000.0);
+
+  // return;
 
   // OLD METHOD BELOW
   
@@ -1044,7 +1269,7 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
 
   //   if (depth == -1) {
   //     depth = d;
-  //     depth = *(uint16_t*)(&data[dataSize-1]);
+  //     depth = *(unsigned char*)(&data[dataSize-1]);
   //   } else if (depth != d) {
   //     depth = -2;
   //   }
@@ -1116,21 +1341,162 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   //   }
   // }
   
+  auto start3 = std::chrono::steady_clock::now();
   // Need to optimize this sort to work with ranked groups. Should be possible
-  for (int i = 0; i < 256; i++) {
-    for (int j = 0; j < 256; j++) {
-      if (buckets_d[i][j] == 0) continue;
-      if (headsIdx_d[i][j] - heads_d[i][j] == 0) {
-        if (buckets_d[i][j] == 1) printf("singular token ");
-        printf("oh noooooo! %02X %02X\n", i, j);
-      }
-      // if (headsIdx_d[i][j] - heads_d[i][j] > 1) {
-      //   std::sort(&LCM[heads_d[i][j]], &LCM[headsIdx_d[i][j]+1], [&](int sA, int sB) {
-      //     return sA + 2 >= dataSize+1 || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
-      //   });
+  int sortCount = 0;
+  currentIdx = 1;
+  int finalIdx = 1;
+  for (int i = dataSize+1; i > packedTailIdx; i--) {
+    // for (int j = 0; j < SA[i]; j++) {
+    //   printf("%d, ", SA[currentIdx+j]);
+    // }
+    // printf("\n");
+    if (finalSA[i] == 1) goto copy;
+    // if (data[(LCM[currentIdx] & 0x1FFFF)+1] == 0) goto copy;
+    if (LCM[currentIdx] + 16 < dataSize) __builtin_prefetch(&LCM[currentIdx]+16, 0, 3);
+
+    // printf("NEW GROUP\n");
+
+    insertionSufSort(&LCM[currentIdx], finalSA[i], [&](uint64_t psA, uint64_t psB) {
+      int sA = psA & 0x1FFFF;
+      int sB = psB & 0x1FFFF;
+      if ((sA % chunkSize == sB % chunkSize && ((psA >> 41) & 0x3FF) == ((psB >> 41) & 0x3FF)) 
+        || (lcmget(sA) && lcmget(sB))) return 1;
+      // printf("comparison between:\n");
+      // bool foundRoot = false;
+      // for (int j = 0; j < dataSize; j++) {
+      //   if (!foundRoot && lcmget(sA+j)) printf("ROOT-> ");
+      //   printf("%02X ", data[sA+j]);
+      //   if (!foundRoot && lcmget(sA+j)) {printf("<-ROOT "); foundRoot = true;}
+      //   if (data[sA+j] != data[sB+j]) break;
       // }
+      // printf("\n\n");
+      // foundRoot = false;
+      // for (int j = 0; j < dataSize; j++) {
+      //   if (!foundRoot && lcmget(sB+j)) printf("ROOT-> ");
+      //   printf("%02X ", data[sB+j]);
+      //   if (!foundRoot && lcmget(sB+j)) {printf("<-ROOT "); foundRoot = true;}
+      //   if (data[sA+j] != data[sB+j]) break;
+      // }
+      // printf("\n\n\n");
+      if (sA+2 >= dataSize || sB+2 >= dataSize) {
+        int r = sA < sB ? -1 : 1;
+        if (r < 0) sortCount++;
+        return r;
+      }
+      int r = memcmp(&data[sA+2], &data[sB+2], std::min(dataSize-sA, dataSize-sB));
+      if (r == 0) return sA < sB ? -1 : 1;
+      if (r < 0) sortCount++;
+      return r;
+    });
+
+    copy:
+    for (int j = 0; j < finalSA[i]; j++) {      
+      bool foundKey = false;
+      for (int k = 0; k < chunkSize; k++) {
+        if (lcmget((LCM[currentIdx+j] & 0x1FFFF))) printf("ROOT-> ");
+        printf("%02X ", data[(LCM[currentIdx+j] & 0x1FFFF)+k]);
+        if (lcmget((LCM[currentIdx+j] & 0x1FFFF))) printf("<-ROOT ");
+        if (j%2 == 0) {
+          if (!foundKey && k > 0 && data[(LCM[currentIdx+j] & 0x1FFFF)+k] != data[(LCM[currentIdx+j-1] & 0x1FFFF)+k]){
+            printf("<-KEY ");
+            foundKey = true;
+          }
+          if (k > 0 && data[(LCM[currentIdx+j] & 0x1FFFF)+k] != data[(LCM[currentIdx+j+1] & 0x1FFFF)+k]) {
+            break;
+          }
+        }
+        else if (k > 0 && data[(LCM[currentIdx+j] & 0x1FFFF)+k] != data[(LCM[currentIdx+j-1] & 0x1FFFF)+k]) break;
+      }
+      printf("\n");
     }
+    printf("\n\n");
+    // for (int j = 0; j < ((LCM[currentIdx+j] >> 17) & 0xFF); j++) {      
+    //   int unpackedSuf = LCM[currentIdx+j] & 0x1FFFF;
+    //   int groupHead = packedBucketHeadIndexes[unpackedSuf+packedBucketHeadOffsets[unpackedSuf]];
+    //   // printf("new copy instance\n");
+    //   // for (int j = 0; j < ((LCM[i] >> 17) & 0xFF); j++) {
+    //   //   // printf("packed read index: %d, found suffix: ", groupHead + j);
+    //   //   // printf("%d\n", SA[groupHead + ((LCM[i] >> 25) & 0xFF) + j] - offset);
+    //   //   // finalSA[finalIdx] = SA[groupHead + ((LCM[i] >> 25) & 0xFF) + j] - offset;
+    //   //   finalIdx++;
+    //   // }
+    //   // maxOffset = std::max(maxOffset, packedBucketHeadOffsets[unpackedSuf]);
+    //   std::copy(&SA[groupHead], &SA[groupHead]+((LCM[currentIdx+j] >> 17) & 0xFF), &finalSA[currentIdx+j]);
+    //   for (int k = finalIdx; k - finalIdx < ((LCM[currentIdx+j] >> 17) & 0xFF); k++) {
+    //     finalSA[k] -= packedBucketHeadOffsets[unpackedSuf];
+    //   }
+    //   finalIdx += ((LCM[currentIdx+j] >> 17) & 0xFF);
+
+    //   // printf("\n");
+    // }
+
+    currentIdx += finalSA[i];
   }
+  // for (int i = 0; i < 256; i++) {
+  //   for (int j = 0; j < 256; j++) {
+  //     if (buckets_d[i][j] == 0) continue;
+  //     // if (j < 255) __builtin_prefetch(&LCM[heads_d[i][j+1]],0,3);
+  //     // if (headsIdx_d[i][j] - heads_d[i][j] == 0) {
+  //     //   if (buckets_d[i][j] == 1) printf("singular token ");
+  //     //   printf("oh noooooo! %02X %02X\n", i, j);
+  //     // }
+  //     // printf("sort size: %d\n", headsIdx_d[i][j] - heads_d[i][j]);
+  //     int sortLen = headsIdx_d[i][j] - heads_d[i][j];
+  //     if (headsIdx_d[i][j] - heads_d[i][j] > 1) {
+  //       int comps = 0;
+  //       insertionSufSortB(&LCM[heads_d[i][j]], sortLen, [&](int psA, int psB) {
+  //         int sA = psA & 0x1FFFF;
+  //         int sB = psB & 0x1FFFF;
+  //         comps++;
+  //         int r = memcmp(&data[sA+2], &data[sB+2], std::min(dataSize-sA, dataSize-sB));
+  //         if (r == 0) return sA < sB ? -1 : 1;
+  //         return r;
+  //       });
+  //       // printf("%d comparisons to sort %d suffix groups\n", comps, sortLen);
+  //       // std::sort(&LCM[heads_d[i][j]], &LCM[headsIdx_d[i][j]+1], [&](int sA, int sB) {
+  //       //   return sA + 2 >= dataSize+1 || memcmp(&data[sA+2], &data[sB+2], dataSize) < 0;
+  //       // });
+  //       sortCount++;
+  //     }
+  //   }
+  // }
+  auto end3 = std::chrono::steady_clock::now();
+
+  auto start4 = std::chrono::steady_clock::now();
+  // int finalIdx = 1;
+  int currentTally = 0;
+  unsigned char maxOffset = 0;
+  for (int i = 1; i < packedHeadIdx; i++) {
+    __builtin_prefetch(&LCM[i]+64, 0, 3);
+    
+    int unpackedSuf = LCM[i] & 0x1FFFF;
+    int groupHead = packedBucketHeadIndexes[(LCM[i] >> 33) & 0xFF]+(LCM[i] >> 25)& 0xFF;;
+    // printf("new copy instance\n");
+    // for (int j = 0; j < ((LCM[i] >> 17) & 0xFF); j++) {
+    //   // printf("packed read index: %d, found suffix: ", groupHead + j);
+    //   // printf("%d\n", SA[groupHead + ((LCM[i] >> 25) & 0xFF) + j] - offset);
+    //   // finalSA[finalIdx] = SA[groupHead + ((LCM[i] >> 25) & 0xFF) + j] - offset;
+    //   finalIdx++;
+    // }
+    // maxOffset = std::max(maxOffset, packedBucketHeadOffsets[unpackedSuf]);
+    // printf("group size: %d\n", ((LCM[i] >> 17) & 0xFF));
+    std::copy(&SA[groupHead], &SA[groupHead]+((LCM[i] >> 17) & 0xFF), &finalSA[finalIdx]);
+    for (int j = finalIdx; j - finalIdx < ((LCM[i] >> 17) & 0xFF); j++) {
+      finalSA[j] -= packedBucketHeadOffsets[unpackedSuf];
+    }
+    // if (finalSA[finalIdx]+1 < dataSize && data[finalSA[finalIdx]+1] == 0) {
+
+    // }
+    finalIdx += ((LCM[i] >> 17) & 0xFF);
+
+    // printf("\n");
+  }
+  auto end4 = std::chrono::steady_clock::now();
+
+  printf("%d root sort operations performed\n", rootSortCount);
+  printf("%d reduction sort operations performed\n", sortCount);
+  // printf("maxOffset: %d\n", maxOffset);
 
   // OLD method below
 
@@ -1321,7 +1687,11 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // }
   // printf("\n");
 
-  printf("My Setup took %.6f seconds, LCM induction took %.6f seconds\n", (double)time.count()/1000000000.0, (double)time2.count()/1000000000.0);
+  printf("My Setup took %.6f seconds, (deprecated) LCM induction took %.6f seconds\n", (double)time.count()/1000000000.0, (double)time2.count()/1000000000.0);
+  time = std::chrono::duration_cast<std::chrono::nanoseconds>(end3-start3);
+  printf("Reduced sort took %.6f seconds\n", (double)time.count()/1000000000.0);
+  time = std::chrono::duration_cast<std::chrono::nanoseconds>(end4-start4);
+  printf("Final copy took %.6f seconds\n", (double)time.count()/1000000000.0);
 
   // std::cout << "\nModified Byte Offsets:" << std::endl;
   // for (int offset : modifiedByteOffsets) {
@@ -1380,16 +1750,15 @@ void generateTemplate_LCP(const unsigned char* data, int dataSize, int chunkSize
   // std::cout << std::endl;
   // printf("\n");
 
-  std::cout << "my packed test" << std::endl;
-  for (int i = 1; i < dataSize+1; i++) {
-    // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
-    // if (lcmget(SA[i])) {
-      if ((LCM[i] & 0b11111111111111111) == (-1 & 0b11111111111111111)) std::cout << "-, ";
-      else std::cout << (int)(LCM[i] & 0b11111111111111111) << ", ";
-    // }
-  }
-  std::cout << std::endl;
-  printf("\n");
+  // std::cout << "my output" << std::endl;
+  // for (int i = 1; i < dataSize+1; i++) {
+  //   // if (tget_global(SA[i]) && !tget_global(SA[i]-1)) {
+  //   // if (lcmget(SA[i])) {
+  //   std::cout << (int)finalSA[i] << ", ";
+  //   // }
+  // }
+  // std::cout << std::endl;
+  // printf("\n");
 
   // int DSS_SA[dataSize];
   // int bA[256];
